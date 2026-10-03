@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      图标背景色。比 App 主背景 #121212 略亮一档，
+      免得在深色壁纸上一坨黑看不出轮廓。
+    -->
+    <color name="ic_launcher_background">#23252E</color>
+</resources>

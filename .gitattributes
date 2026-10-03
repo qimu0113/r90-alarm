@@ -1,0 +1,17 @@
+# 统一换行符，避免 Windows 开发把 CRLF 带进仓库
+* text=auto
+
+# Windows 脚本必须是 CRLF，否则在某些环境执行异常
+*.bat text eol=crlf
+
+# Shell 脚本必须是 LF
+gradlew text eol=lf
+*.sh text eol=lf
+
+# 二进制文件不做换行符转换
+*.jar binary
+*.apk binary
+*.png binary
+*.jpg binary
+*.jks binary
+*.keystore binary

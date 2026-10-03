@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      只做最小主题壳。真正的配色在 Compose 侧（R90Theme.kt）定义，
+      MaterialTheme 会覆盖这里的颜色。
+    -->
+    <style name="Theme.R90Alarm" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

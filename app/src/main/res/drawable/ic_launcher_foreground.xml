@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景层。
+
+  画布 108x108，安全区是以 (54,54) 为心、半径 33 的圆。
+  所有元素都压在半径 28 以内，保证被任何厂商的遮罩裁切后都不缺角。
+
+  造型：时钟外环 + 右上一段 90° 高亮弧（呼应「R90」）+ 两根指针。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 时钟外环：未点亮部分，低对比灰 -->
+    <path
+        android:pathData="M54,29 a25,25 0 1,0 0,50 a25,25 0 1,0 0,-50"
+        android:strokeColor="#8A8F9E"
+        android:strokeWidth="6"
+        android:fillColor="#00000000" />
+
+    <!-- 90° 高亮弧：12 点方向顺时针到 3 点方向 -->
+    <path
+        android:pathData="M54,29 A25,25 0 0,1 79,54"
+        android:strokeColor="#6EC6E8"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 时针：指向 12 -->
+    <path
+        android:pathData="M54,54 L54,37"
+        android:strokeColor="#E6E1E5"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <!-- 分针：指向 3 -->
+    <path
+        android:pathData="M54,54 L70,54"
+        android:strokeColor="#E6E1E5"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <!-- 中心轴点 -->
+    <path
+        android:pathData="M54,54 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"
+        android:fillColor="#E6E1E5" />
+
+</vector>
