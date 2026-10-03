@@ -50,7 +50,7 @@ Size: 6 Kotlin source files, 1310 lines.
 | Version | 0.1 |
 | minSdk / targetSdk | 26 / 35 (Android 8.0 and up) |
 | Size | 1,146,076 bytes (~1.1 MB) |
-| APK SHA-256 | `b5b04c226a4ae92066ad9e569ac61ed624836f85ec5c8ecf430411bc1ddff1f6` |
+| APK SHA-256 | See the corresponding [Release](https://github.com/qimu0113/r90-alarm/releases) notes (each build records the hash of the artifact it produced) |
 | Permissions | Exactly one system permission is declared: `com.android.alarm.permission.SET_ALARM` (normal level, granted at install, **no dialog**). One further permission, `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, is added automatically by androidx — it is app-defined and grants no actual capability. **No `INTERNET`** |
 | Signing | APK Signature Scheme **v2** (minSdk 26 is already above the API 24 that makes v1 necessary) |
 

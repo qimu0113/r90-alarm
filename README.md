@@ -50,7 +50,7 @@ APK 的基本信息：
 | 版本 | 0.1 |
 | minSdk / targetSdk | 26 / 35（Android 8.0 及以上） |
 | 体积 | 1,146,076 字节（约 1.1 MB） |
-| APK SHA-256 | `b5b04c226a4ae92066ad9e569ac61ed624836f85ec5c8ecf430411bc1ddff1f6` |
+| APK SHA-256 | 见对应 [Release](https://github.com/qimu0113/r90-alarm/releases) 说明（每次构建都会写入当时产物的哈希） |
 | 权限 | 系统权限只声明 1 项：`com.android.alarm.permission.SET_ALARM`（normal 级，安装即授予、**不弹窗**）。另有一项 androidx 自动加入的 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`（应用自定义、无实际能力）。**没有 `INTERNET`** |
 | 签名 | APK Signature Scheme **v2**（minSdk 26 已高于 v1 所需的 API 24，无需 v1） |
 | 来源 | 本仓库 `main` 分支源码构建，可用 `apksigner verify` 自行比对指纹 |
