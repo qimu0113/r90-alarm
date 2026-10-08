@@ -77,6 +77,19 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Settings
+import androidx.core.content.ContextCompat
+import com.yanfei.r90alarm.alarm.AlarmScheduler
+import com.yanfei.r90alarm.alarm.AudioRouteMode
+import com.yanfei.r90alarm.alarm.RingtonePickerHelper
+import com.yanfei.r90alarm.settings.AppSettings
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -175,6 +188,52 @@ private fun R90Screen() {
     // 诊断日志面板
     var logOpen by remember { mutableStateOf(false) }
 
+    // ---- 应用内闹钟接线（不动既有系统时钟路径） ----
+
+    // 设置：铃声 / 路由档 / 最长响铃 / 贪睡。存 filesDir/settings.json（零新增依赖）。
+    var settings by remember { mutableStateOf(AppSettings.load(context)) }
+
+    // 提醒方式：false = 系统时钟（既有行为）；true = 本机闹钟（前台服务响铃）。
+    var inAppMode by rememberSaveable { mutableStateOf(false) }
+
+    // 闹钟设置对话框开关
+    var alarmSettingsOpen by remember { mutableStateOf(false) }
+
+    // 写入即持久化，避免每处改动都手写 save
+    val applySettings: (AppSettings) -> Unit = { next ->
+        settings = next
+        AppSettings.save(context, next)
+    }
+
+    // 通知权限（API 33+）：仅声明不够，还需运行时申请，否则通知不出现在抽屉里。
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* 拒绝也不影响响铃，只影响通知可见性 */ }
+
+    fun ensureNotifPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // 系统铃声选择器返回
+    val ringtoneLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            RingtonePickerHelper.parsePickedUri(result.data)?.let { uri ->
+                applySettings(settings.copy(ringtoneUri = uri.toString()))
+            }
+        }
+    }
+
+    val ringtoneLabel = remember(settings.ringtoneUri) {
+        RingtonePickerHelper.displayName(context, settings.ringtoneUri?.let(Uri::parse))
+    }
+
     // Q3：准备入睡时长可调。默认 15 分钟。
     // 用 rememberSaveable 而不是 remember —— 万一被系统回收重建，选择不会丢。
     var fallAsleepMinutes by rememberSaveable {
@@ -200,6 +259,9 @@ private fun R90Screen() {
             TopAppBar(
                 title = { Text("R90 闹钟") },
                 actions = {
+                    IconButton(onClick = { alarmSettingsOpen = true }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "闹钟设置")
+                    }
                     IconButton(onClick = { logOpen = true }) {
                         Icon(Icons.Filled.Info, contentDescription = "诊断日志")
                     }
@@ -222,6 +284,12 @@ private fun R90Screen() {
                 onSelect = { fallAsleepMinutes = it },
             )
 
+            // 提醒方式切换：默认「系统时钟」= 完全保留既有行为
+            AlarmModeSelector(
+                inAppMode = inAppMode,
+                onSelect = { inAppMode = it },
+            )
+
             Spacer(Modifier.height(4.dp))
 
             LazyColumn(
@@ -235,6 +303,43 @@ private fun R90Screen() {
                         is24Hour = is24Hour,
                         onClick = {
                             val timeText = formatTime(result.hour24, result.minute, is24Hour)
+
+                            // ---- 应用内闹钟路径（与既有系统时钟路径互不影响）----
+                            if (inAppMode) {
+                                val triggerAt = computeTriggerMillis(now, result)
+                                ensureNotifPermission()
+                                when (val outcome =
+                                    AlarmScheduler.schedule(context, triggerAt, "R90 · ${result.cycles} 周期")) {
+                                    AlarmScheduler.Result.Scheduled -> scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            "已设置本机闹钟 $timeText",
+                                            duration = SnackbarDuration.Short,
+                                        )
+                                    }
+
+                                    AlarmScheduler.Result.NeedExactAlarmPermission -> {
+                                        openExactAlarmSettings(context)
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                "需要「闹钟与提醒」权限，已打开系统设置",
+                                                duration = SnackbarDuration.Long,
+                                            )
+                                        }
+                                    }
+
+                                    is AlarmScheduler.Result.Failed -> scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            "本机闹钟设置失败：${outcome.reason}",
+                                            duration = SnackbarDuration.Long,
+                                        )
+                                    }
+                                }
+                                DiagLog.append(
+                                    context, "SET_INAPP_ALARM",
+                                    "目标=$timeText 周期=${result.cycles} at=$triggerAt",
+                                )
+                                return@CycleRow
+                            }
 
                             // Activity 拿不到就没法无栈跳转，直接说清原因
                             if (activity == null) {
@@ -354,6 +459,22 @@ private fun R90Screen() {
 
         if (logOpen) {
             DiagLogDialog(context = context, onDismiss = { logOpen = false })
+        }
+
+        if (alarmSettingsOpen) {
+            AlarmSettingsDialog(
+                settings = settings,
+                ringtoneLabel = ringtoneLabel,
+                onPickRingtone = {
+                    ringtoneLauncher.launch(
+                        RingtonePickerHelper.buildPickerIntent(settings.ringtoneUri?.let(Uri::parse))
+                    )
+                },
+                onRouteChange = { applySettings(settings.copy(routeMode = it)) },
+                onMaxRingChange = { applySettings(settings.copy(maxRingMillis = it)) },
+                onSnoozeChange = { applySettings(settings.copy(snoozeMinutes = it)) },
+                onDismiss = { alarmSettingsOpen = false },
+            )
         }
     }
 }
@@ -703,4 +824,164 @@ private fun formatTime(hour24: Int, minute: Int, is24Hour: Boolean): String {
     }
     val suffix = if (hour24 < 12) "AM" else "PM"
     return "%d:%02d %s".format(h12, minute, suffix)
+}
+
+/**
+ * 把某周期的起床时刻换算成 epoch 毫秒（应用内闹钟的触发点）。
+ *
+ * 复用 [R90Calculator] 已经算好的 dayDiff + hour24 + minute，
+ * 用 java.time 落到本地时区 —— 不手写「日期 + 1」，避免月末 / 跨年 / 闰年翻车。
+ */
+private fun computeTriggerMillis(now: ZonedDateTime, result: R90Calculator.Result): Long {
+    val date = now.toLocalDate().plusDays(result.dayDiff.toLong())
+    return date.atTime(result.hour24, result.minute).atZone(now.zone).toInstant().toEpochMilli()
+}
+
+/** 精确闹钟能力缺失时，跳到系统的「闹钟与提醒」设置页让用户开启。 */
+private fun openExactAlarmSettings(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
+/**
+ * 提醒方式切换。
+ *
+ * 默认落「系统时钟」—— 完全保留 v0.1 的既有行为；
+ * 切到「本机闹钟」才走前台服务响铃这条新路径。两条路互不影响。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AlarmModeSelector(
+    inAppMode: Boolean,
+    onSelect: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "提醒方式",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FilterChip(
+            selected = !inAppMode,
+            onClick = { onSelect(false) },
+            label = { Text("系统时钟", fontSize = 13.sp) },
+        )
+        FilterChip(
+            selected = inAppMode,
+            onClick = { onSelect(true) },
+            label = { Text("本机闹钟", fontSize = 13.sp) },
+        )
+    }
+}
+
+/**
+ * 闹钟设置对话框：铃声 / 音频路由 / 最长响铃 / 贪睡。
+ *
+ * 用胶囊按钮而非滑杆 —— 与首页「准备入睡」保持一致的交互语言。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AlarmSettingsDialog(
+    settings: AppSettings,
+    ringtoneLabel: String,
+    onPickRingtone: () -> Unit,
+    onRouteChange: (AudioRouteMode) -> Unit,
+    onMaxRingChange: (Long) -> Unit,
+    onSnoozeChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("闹钟设置") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                SettingsSectionLabel("铃声")
+                TextButton(onClick = onPickRingtone, contentPadding = PaddingValues(0.dp)) {
+                    Text("$ringtoneLabel（点击更换）", fontSize = 14.sp)
+                }
+
+                SettingsSectionLabel("音频路由")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingChip(
+                        text = "耳机优先",
+                        selected = settings.routeMode == AudioRouteMode.PREFER_HEADSET,
+                        onClick = { onRouteChange(AudioRouteMode.PREFER_HEADSET) },
+                    )
+                    SettingChip(
+                        text = "只走耳机",
+                        selected = settings.routeMode == AudioRouteMode.HEADSET_ONLY,
+                        onClick = { onRouteChange(AudioRouteMode.HEADSET_ONLY) },
+                    )
+                    SettingChip(
+                        text = "外放",
+                        selected = settings.routeMode == AudioRouteMode.SPEAKER,
+                        onClick = { onRouteChange(AudioRouteMode.SPEAKER) },
+                    )
+                }
+
+                SettingsSectionLabel("最长响铃（兜底自动停）")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppSettings.MAX_RING_MINUTES_OPTIONS.forEach { minutes ->
+                        SettingChip(
+                            text = "$minutes 分",
+                            selected = settings.maxRingMillis == minutes * 60_000L,
+                            onClick = { onMaxRingChange(minutes * 60_000L) },
+                        )
+                    }
+                }
+
+                SettingsSectionLabel("贪睡时长")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppSettings.SNOOZE_MINUTES_OPTIONS.forEach { minutes ->
+                        SettingChip(
+                            text = "$minutes 分",
+                            selected = settings.snoozeMinutes == minutes,
+                            onClick = { onSnoozeChange(minutes) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("完成") }
+        },
+    )
+}
+
+@Composable
+private fun SettingsSectionLabel(text: String) {
+    Spacer(Modifier.height(12.dp))
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(4.dp))
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(text, fontSize = 13.sp) },
+    )
 }

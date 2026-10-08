@@ -2,15 +2,48 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      唯一需要的权限。普通权限（normal protection level），
-      安装时自动授予，不弹权限对话框，用户无法撤销。
+      系统时钟路径的权限（普通权限，安装即得，不弹窗，用户无法撤销）。
     -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <!--
+      应用内闹钟新增的权限。除 POST_NOTIFICATIONS 外均为普通权限，安装即得、无弹窗。
+    -->
+
+    <!-- 前台服务本身（API 28+ 启动前台服务必须声明） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- mediaPlayback 型前台服务专属权限（API 34+ 强制）。无需运行时前置条件。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!--
+      通知权限（API 33+ 运行时权限，唯一会弹一次系统对话框的权限）。
+      官方事实：启动前台服务本身不需要它；但没有它，前台服务通知**不会**出现在通知抽屉里
+      （只在「前台服务任务管理器」可见）。我们需要通知里的「关闭 / 贪睡」按钮，
+      所以声明并在用户首次使用应用内闹钟时按需申请。用户拒绝也不影响响铃 —— 只影响通知可见性。
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      精确闹钟权限。API 31/32 用 SCHEDULE_EXACT_ALARM（默认授予）；
+      API 33+ 用 USE_EXACT_ALARM（普通权限，安装即得，无弹窗）。
+      两者配合覆盖全部版本，且 USE_EXACT_ALARM 使 canScheduleExactAlarms() 恒为 true。
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+
+    <!-- 开机重排闹钟（只重排，不启动前台服务）。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 响铃振动（普通权限）。「只走耳机」档无耳机时静音，振动是兜底提醒。 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
       Android 11 (API 30) 包可见性。
-      不声明的话 resolveActivity() 对系统时钟会返回 null，
-      导致 App 误报「找不到系统时钟应用」。
+      不声明的话 resolveActivity() 对系统时钟 / 铃声选择器会返回 null，
+      导致 App 误报「找不到」。
 
       故意用 <intent> 而不是 <package>：
       厂商的时钟包名五花八门（com.android.deskclock / com.sec.android.app.clockpackage /
@@ -24,6 +57,10 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+        <!-- 系统铃声选择器 -->
+        <intent>
+            <action android:name="android.intent.action.RINGTONE_PICKER" />
         </intent>
     </queries>
 
@@ -55,6 +92,53 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          响铃页。只由本 App（服务 / 通知）拉起，不对外导出。
+          亮屏 / 锁屏可见在代码里用窗口标志实现（不用全屏 Intent）。
+        -->
+        <activity
+            android:name=".alarm.RingActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+
+        <!--
+          响铃前台服务。mediaPlayback 型：无运行时长上限，不被系统按时间掐断。
+        -->
+        <service
+            android:name=".alarm.AlarmPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!--
+          精确闹钟到点广播。由 AlarmScheduler 的显式 PendingIntent 触发，
+          不需要 intent-filter，也不导出。
+        -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- 通知按钮广播。同样是显式 PendingIntent，不导出。 -->
+        <receiver
+            android:name=".alarm.RingActionReceiver"
+            android:exported="false" />
+
+        <!--
+          开机 / 应用更新重排接收器。
+          BOOT_COMPLETED 是受保护广播，仅系统可发，故 exported="true" 无第三方伪造风险。
+          ⚠️ 它只重排闹钟，绝不启动响铃前台服务（API 35 禁止 BOOT_COMPLETED 启动 mediaPlayback FGS）。
+        -->
+        <receiver
+            android:name=".alarm.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>
