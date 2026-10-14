@@ -1,3 +1,37 @@
 <resources>
     <string name="app_name">R90 闹钟</string>
+
+    <!-- ===== 第二批：使用历史 / 关于 / 更新检查 ===== -->
+
+    <!-- 顶栏溢出菜单 -->
+    <string name="menu_more">更多</string>
+    <string name="menu_history">使用历史</string>
+    <string name="menu_about">关于</string>
+
+    <!-- 使用历史页 -->
+    <string name="history_title">使用历史</string>
+    <string name="history_empty">（暂无记录。回首页设一次闹钟就会有了）</string>
+    <string name="history_hint">记录只在本机，导出由你决定发给谁。不联网、不上传。</string>
+    <string name="history_export_share">分享文件</string>
+    <string name="history_export_save">另存为…</string>
+    <string name="history_clear">清空</string>
+    <string name="history_back">返回</string>
+    <string name="history_cleared">已清空</string>
+    <string name="history_export_subject">R90 闹钟 · 使用历史</string>
+    <string name="history_export_chooser">导出使用历史</string>
+    <string name="history_export_failed_to_clipboard">分享面板打不开，已复制到剪贴板</string>
+    <string name="history_saved">已保存</string>
+    <string name="history_save_failed">保存失败</string>
+
+    <!-- 关于页 -->
+    <string name="about_title">关于</string>
+    <string name="about_version_label">版本 %1$s（build %2$d）</string>
+    <string name="about_intro">一个睡前躺床上用的 R90 睡眠周期闹钟。核心计算全在本机，不需要账号、不收集数据。</string>
+    <string name="about_open_releases">打开发布页</string>
+    <string name="about_check_update">检查更新</string>
+    <string name="about_checking">检查中…</string>
+    <string name="about_update_available">发现新版本：%1$s</string>
+    <string name="about_up_to_date">已是最新版本</string>
+    <string name="about_check_failed">检查失败：%1$s</string>
+    <string name="about_open_releases_failed">打不开浏览器，链接已复制到剪贴板</string>
 </resources>

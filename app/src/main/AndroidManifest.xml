@@ -25,6 +25,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+      全屏提醒权限（F1）。用途**仅一处**：锁屏 / 息屏 / AOD 时，让闹钟响铃通知
+      直接拉起 [RingActivity] 全屏页（`buildNotification` 的 setFullScreenIntent）。
+
+      ⚠️ 权限类型 = normal|appop（真机已确认）→ **不需要运行时申请**，安装即声明。
+      仅 API 34+ 引入，低版本无此权限概念（静默豁免；< 34 无 FSI 机制，走普通通知）。
+
+      ⚠️ 用户可在系统设置里关闭（此时 canUseFullScreenIntent() 返回 false）。
+      关闭不影响响铃与新通知，只是不再全屏；MainActivity 会静默提示一行引导，不弹窗。
+    -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!--
       精确闹钟权限。API 31/32 用 SCHEDULE_EXACT_ALARM（默认授予）；
       API 33+ 用 USE_EXACT_ALARM（普通权限，安装即得，无弹窗）。
       两者配合覆盖全部版本，且 USE_EXACT_ALARM 使 canScheduleExactAlarms() 恒为 true。
@@ -39,6 +51,15 @@
 
     <!-- 响铃振动（普通权限）。「只走耳机」档无耳机时静音，振动是兜底提醒。 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+      联网权限（普通权限，安装即得、无弹窗）。
+
+      用途**仅一处**：启动后静默查一次 + 「关于」页手动检查 GitHub Releases 有没有新版本。
+      这也是本 App「不联网」旧定位的唯一例外（用户已拍板）。
+      全程只发一个 GET 读公开 release 元数据，不上传任何本地数据。
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
       Android 11 (API 30) 包可见性。
@@ -95,7 +116,10 @@
 
         <!--
           响铃页。只由本 App（服务 / 通知）拉起，不对外导出。
-          亮屏 / 锁屏可见在代码里用窗口标志实现（不用全屏 Intent）。
+
+          ⚠️ 保持 exported="false"：全屏通知由 SystemUI 手持**我们创建的 PendingIntent**
+          启动本页，鉴权按创建者（同 UID）判定，不需要 exported。
+          亮屏 / 锁屏可见另在代码里用窗口标志实现。
         -->
         <activity
             android:name=".alarm.RingActivity"
@@ -139,6 +163,26 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!--
+          使用历史导出用的 FileProvider。
+
+          为什么需要它：从 Android 7 (API 24) 起，把 file:// URI 直接塞进
+          ACTION_SEND 会抛 FileUriExposedException。改用 FileProvider 生成
+          content:// URI 并临时授权，才能安全地把文件交给「微信/文件传输助手」等目标应用。
+
+          authorities 用 ${applicationId} 占位，避免 debug/release 或改包名时冲突；
+          exported=false + grantUriPermissions=true：只按次授权，不对外开放整个 provider。
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

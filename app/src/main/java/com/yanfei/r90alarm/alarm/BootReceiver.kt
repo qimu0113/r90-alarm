@@ -40,9 +40,10 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
 
-        // 已经过点：不再重排，清掉记录即可（避免开机后立刻补响一个早已过去的闹钟）
+        // 已经过点：不再重排，清掉记录即可（避免开机后立刻补响一个早已过去的闹钟）。
+        // 走 update 原子「读-改-写」，基于当前磁盘值清 pendingAlarm，不动别的字段。
         if (pending.triggerAtMillis <= System.currentTimeMillis()) {
-            AppSettings.save(context, settings.withoutPendingAlarm())
+            AppSettings.update(context) { it.withoutPendingAlarm() }
             DiagLog.append(context, "BOOT_RESCHEDULE", "已过点，清除 at=${pending.triggerAtMillis}")
             return
         }

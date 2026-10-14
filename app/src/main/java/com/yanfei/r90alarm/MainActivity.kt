@@ -1,6 +1,7 @@
 package com.yanfei.r90alarm
 
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -62,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -83,12 +85,23 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Settings
 import androidx.core.content.ContextCompat
 import com.yanfei.r90alarm.alarm.AlarmScheduler
 import com.yanfei.r90alarm.alarm.AudioRouteMode
 import com.yanfei.r90alarm.alarm.RingtonePickerHelper
+import com.yanfei.r90alarm.history.UsageHistory
+import com.yanfei.r90alarm.history.UsageRecord
 import com.yanfei.r90alarm.settings.AppSettings
+import com.yanfei.r90alarm.ui.AboutScreen
+import com.yanfei.r90alarm.ui.HistoryScreen
+import com.yanfei.r90alarm.update.UpdateChecker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,7 +118,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    R90Screen()
+                    R90App()
                 }
             }
         }
@@ -160,11 +173,48 @@ private fun rememberTickingNow(): State<ZonedDateTime> {
     return now
 }
 
+/**
+ * 顶层页面路由。
+ *
+ * 只有三个页面：首页（主链路）/ 使用历史 / 关于。
+ * 用最朴素的 Int 状态机，而不是 Navigation 库 —— 三个页面不值得引入导航依赖，
+ * 与项目「尽量少的外部状态、零新增依赖」的口径一致。
+ */
+@Composable
+private fun R90App() {
+    // 0 = 首页；1 = 使用历史；2 = 关于。
+    // 用 Int 而不是枚举：rememberSaveable 能直接存取基本类型，跨进程重建不丢。
+    var screen by rememberSaveable { mutableStateOf(0) }
+
+    // 子页面按返回键回首页，而不是直接退出 App（否则一次误触就退到桌面）
+    BackHandler(enabled = screen != 0) { screen = 0 }
+
+    when (screen) {
+        1 -> HistoryScreen(onBack = { screen = 0 })
+        2 -> AboutScreen(onBack = { screen = 0 })
+        else -> R90Screen(
+            onOpenHistory = { screen = 1 },
+            onOpenAbout = { screen = 2 },
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun R90Screen() {
+private fun R90Screen(
+    onOpenHistory: () -> Unit,
+    onOpenAbout: () -> Unit,
+) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
+
+    // 冷启动静默查一次更新（24h 节流）。不弹任何 UI，结果只缓进 UpdateChecker，
+    // 供「关于」页展示。走 IO 线程 + 整体 runCatching：无网 / 超时 / 解析失败都不影响主界面。
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            runCatching { UpdateChecker.checkIfDue(context, BuildConfig.VERSION_NAME) }
+        }
+    }
 
     // 观测「点击之后本 App 有没有被暂停、暂停多久」——用来间接判断时钟界面弹没弹。
     // 原理与局限见 DiagLog.kt 里 UiProbe 的注释。
@@ -185,6 +235,9 @@ private fun R90Screen() {
     val now by rememberTickingNow()
     val is24Hour = remember { DateFormat.is24HourFormat(context) }
 
+    // 顶栏「更多」溢出菜单（使用历史 / 关于）
+    var menuOpen by remember { mutableStateOf(false) }
+
     // 诊断日志面板
     var logOpen by remember { mutableStateOf(false) }
 
@@ -199,10 +252,23 @@ private fun R90Screen() {
     // 闹钟设置对话框开关
     var alarmSettingsOpen by remember { mutableStateOf(false) }
 
-    // 写入即持久化，避免每处改动都手写 save
-    val applySettings: (AppSettings) -> Unit = { next ->
-        settings = next
-        AppSettings.save(context, next)
+    // F3：全屏提醒能力。API 34+ 用户可在系统设置里关闭；false 时首页展示一行静默引导（不弹窗）。
+    var fullScreenOk by remember { mutableStateOf(canUseFullScreen(context)) }
+
+    // 每次回到前台重读一次：用户可能刚才去系统设置里开启了它，返回本行应自动消失。
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            fullScreenOk = canUseFullScreen(context)
+        }
+    }
+
+    // 写入即持久化，避免每处改动都手写 save。
+    //
+    // 改的是「增量」（对当前磁盘值套用 transform），而不是把内存里的旧快照整份写回 ——
+    // 否则会把后台线程（UpdateChecker，IO 线程）刚写入的 lastUpdateCheckMillis
+    // 或者 AlarmScheduler 刚写入的 pendingAlarm 一起冲掉。见 AppSettings.update。
+    val applySettings: ((AppSettings) -> AppSettings) -> Unit = { transform ->
+        settings = AppSettings.update(context, transform)
     }
 
     // 通知权限（API 33+）：仅声明不够，还需运行时申请，否则通知不出现在抽屉里。
@@ -219,13 +285,21 @@ private fun R90Screen() {
         }
     }
 
+    // App 一打开就申请通知权限。
+    //
+    // 为什么不能只靠「点击设为本机闹钟」那一处：真机上用户可能没走那个按钮，
+    // 或经 adb 广播触发响铃 —— 那样 POST_NOTIFICATIONS 永远是 granted=false，
+    // 带「关闭 / 贪睡」按钮的响铃通知根本不显示，用户找不到关闭入口。
+    // ensureNotifPermission() 内部有 checkSelfPermission 短路，重复调用无害。
+    LaunchedEffect(Unit) { ensureNotifPermission() }
+
     // 系统铃声选择器返回
     val ringtoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             RingtonePickerHelper.parsePickedUri(result.data)?.let { uri ->
-                applySettings(settings.copy(ringtoneUri = uri.toString()))
+                applySettings { it.copy(ringtoneUri = uri.toString()) }
             }
         }
     }
@@ -265,6 +339,33 @@ private fun R90Screen() {
                     IconButton(onClick = { logOpen = true }) {
                         Icon(Icons.Filled.Info, contentDescription = "诊断日志")
                     }
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.menu_more),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_history)) },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenHistory()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_about)) },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenAbout()
+                                },
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -290,6 +391,11 @@ private fun R90Screen() {
                 onSelect = { inAppMode = it },
             )
 
+            // F3：全屏提醒未开启时，静默提示一行（可点跳系统设置）—— 不弹对话框。
+            if (!fullScreenOk) {
+                FullScreenHintRow(onClick = { openFullScreenIntentSettings(context) })
+            }
+
             Spacer(Modifier.height(4.dp))
 
             LazyColumn(
@@ -308,8 +414,10 @@ private fun R90Screen() {
                             if (inAppMode) {
                                 val triggerAt = computeTriggerMillis(now, result)
                                 ensureNotifPermission()
-                                when (val outcome =
-                                    AlarmScheduler.schedule(context, triggerAt, "R90 · ${result.cycles} 周期")) {
+                                val scheduleResult = AlarmScheduler.schedule(
+                                    context, triggerAt, "R90 · ${result.cycles} 周期",
+                                )
+                                when (scheduleResult) {
                                     AlarmScheduler.Result.Scheduled -> scope.launch {
                                         snackbarHostState.showSnackbar(
                                             "已设置本机闹钟 $timeText",
@@ -329,11 +437,24 @@ private fun R90Screen() {
 
                                     is AlarmScheduler.Result.Failed -> scope.launch {
                                         snackbarHostState.showSnackbar(
-                                            "本机闹钟设置失败：${outcome.reason}",
+                                            "本机闹钟设置失败：${scheduleResult.reason}",
                                             duration = SnackbarDuration.Long,
                                         )
                                     }
                                 }
+                                // 记一条使用历史。只有真的排进 AlarmManager 才算成功。
+                                UsageHistory.append(
+                                    context,
+                                    UsageRecord(
+                                        epochMillis = System.currentTimeMillis(),
+                                        targetHour = result.hour24,
+                                        targetMinute = result.minute,
+                                        cycles = result.cycles,
+                                        fallAsleepMin = fallAsleepMinutes,
+                                        mode = UsageRecord.Mode.IN_APP,
+                                        success = scheduleResult == AlarmScheduler.Result.Scheduled,
+                                    ),
+                                )
                                 DiagLog.append(
                                     context, "SET_INAPP_ALARM",
                                     "目标=$timeText 周期=${result.cycles} at=$triggerAt",
@@ -383,6 +504,21 @@ private fun R90Screen() {
                                     // 失败必须说清原因 + 给替代方案，不能只弹一句"失败"
                                     noClockDialogTime = timeText
                             }
+
+                            // 记一条使用历史。NoHandler 才是失败；SilentRequested / UiFallback
+                            // 都算「已成功把请求交给系统时钟」。
+                            UsageHistory.append(
+                                context,
+                                UsageRecord(
+                                    epochMillis = System.currentTimeMillis(),
+                                    targetHour = result.hour24,
+                                    targetMinute = result.minute,
+                                    cycles = result.cycles,
+                                    fallAsleepMin = fallAsleepMinutes,
+                                    mode = UsageRecord.Mode.SYSTEM_CLOCK,
+                                    success = outcome !is SystemAlarmLauncher.Outcome.NoHandler,
+                                ),
+                            )
 
                             // 落诊断日志。
                             //
@@ -470,9 +606,9 @@ private fun R90Screen() {
                         RingtonePickerHelper.buildPickerIntent(settings.ringtoneUri?.let(Uri::parse))
                     )
                 },
-                onRouteChange = { applySettings(settings.copy(routeMode = it)) },
-                onMaxRingChange = { applySettings(settings.copy(maxRingMillis = it)) },
-                onSnoozeChange = { applySettings(settings.copy(snoozeMinutes = it)) },
+                onRouteChange = { mode -> applySettings { it.copy(routeMode = mode) } },
+                onMaxRingChange = { millis -> applySettings { it.copy(maxRingMillis = millis) } },
+                onSnoozeChange = { minutes -> applySettings { it.copy(snoozeMinutes = minutes) } },
                 onDismiss = { alarmSettingsOpen = false },
             )
         }
@@ -849,6 +985,37 @@ private fun openExactAlarmSettings(context: Context) {
 }
 
 /**
+ * F3：本 App 当前能否使用全屏提醒（`USE_FULL_SCREEN_INTENT`）。
+ *
+ * `NotificationManager.canUseFullScreenIntent()` 是 **API 34** 引入 —— 必须按版本守卫，
+ * 否则低版本上会 `NoSuchMethodError`。低于 34 直接视为可用：
+ * 该版本根本没有 FSI 机制，没有「被关闭」这回事（普通通知照常）。
+ * 系统服务取不到（极端环境）也按可用处理，宁可不多提示一行。
+ */
+private fun canUseFullScreen(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 34) return true
+    val nm = context.getSystemService(NotificationManager::class.java) ?: return true
+    return nm.canUseFullScreenIntent()
+}
+
+/**
+ * 跳到本 App 的「全屏提醒」系统设置页。
+ *
+ * `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` 同为 API 34 常量；用 intent 显式带上本包名，
+ * 直达本 App 的开关项。部分 ROM 无此页 → 整体 `runCatching`，跳不过去就静默算了（不弹错）。
+ */
+private fun openFullScreenIntentSettings(context: Context) {
+    if (Build.VERSION.SDK_INT < 34) return
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+                .setData(Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
+/**
  * 提醒方式切换。
  *
  * 默认落「系统时钟」—— 完全保留 v0.1 的既有行为；
@@ -882,6 +1049,38 @@ private fun AlarmModeSelector(
             selected = inAppMode,
             onClick = { onSelect(true) },
             label = { Text("本机闹钟", fontSize = 13.sp) },
+        )
+    }
+}
+
+/**
+ * F3：全屏提醒能力缺失时的一行静默提示。
+ *
+ * 为什么是「静默一行」而不是对话框：全屏提醒只是体验增强 —— 缺失时响铃通知、关闭/贪睡
+ * 按钮、声音、振动全部照常，用户依然能正常看到并关闭闹钟，不存在功能失败。
+ * 不值得用一个打断式弹窗。用户在系统设置里开启后返回，本行会自行消失。
+ */
+@Composable
+private fun FullScreenHintRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "⚠️ 全屏提醒未开启：锁屏时闹钟可能只弹通知、不占满屏",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "去开启",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.primary,
         )
     }
 }

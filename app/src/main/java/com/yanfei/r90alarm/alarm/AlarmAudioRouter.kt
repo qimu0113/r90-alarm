@@ -9,6 +9,19 @@ import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+
+/** 自愈心跳间隔：静音期间每 5 秒重算一次路由，耳机回来就解除静音。 */
+private const val RETRY_INTERVAL_MILLIS = 5_000L
+
+/**
+ * `setPreferredDevice` 之后的宽限窗口。
+ *
+ * 设首选设备后系统会异步回调一次 [AudioRouting.OnRoutingChangedListener]，
+ * 但此刻 `MediaPlayer.routedDevice` 可能仍指向旧设备（异步未生效）。
+ * 若旧值是内置扬声器，会被误判成「漏音」而错误静音 —— 故用这段窗口放行。
+ */
+private const val APPLY_GRACE_MILLIS = 300L
 
 /**
  * 把 [AudioRoutePlan] 的纯决策落到真实的 `MediaPlayer` 上。
@@ -47,15 +60,64 @@ class AlarmAudioRouter(
 
     private var started = false
 
+    /** 最近一次决策，供路由回调判定「是否漏音」（用决策语义，不用 mode 硬判）。 */
+    private var lastDecision: RouteDecision? = null
+
+    /** `setPreferredDevice` 后的宽限截止时刻（`elapsedRealtime`）。窗口内路由变化只记录不拦截。 */
+    private var graceUntilMillis: Long = 0L
+
+    /** 静音起点（`elapsedRealtime`）。未静音时为 0。 */
+    private var mutedSinceMillis: Long = 0L
+
+    /** 自愈心跳的重试序号，仅用于日志/文案区分。 */
+    private var retryCount: Int = 0
+
     /** 当前是否处于「静音」态（只走耳机档且无耳机）。 */
     @Volatile
     var isMuted: Boolean = false
         private set
 
+    /**
+     * 已静音的持续时长（毫秒）；未静音时为 0。
+     *
+     * 必须用 [SystemClock.elapsedRealtime]：它随系统运行单调递增，不受用户手动改系统时间影响。
+     * 用 `currentTimeMillis` 的话，用户中途改了时间就能让「已静音多久」算成负数或暴涨。
+     */
+    val mutedDurationMillis: Long
+        get() {
+            val since = mutedSinceMillis
+            if (!isMuted || since == 0L) return 0L
+            return (SystemClock.elapsedRealtime() - since).coerceAtLeast(0L)
+        }
+
     private var lastSummary: String = "未初始化"
 
     /** 最近一次路由摘要，供通知文案使用。 */
     val summary: String get() = lastSummary
+
+    /**
+     * 自愈心跳。
+     *
+     * 为什么需要它：路由恢复原本**完全依赖系统回调**（[AudioDeviceCallback] /
+     * [AudioRouting.OnRoutingChangedListener]），实测这两个回调在 bug 现场会隔很久才来一次
+     * （最长记录 85 秒），中间闹钟哑着不会自愈。这里用定时重算兜底。
+     *
+     * 只在 `isMuted == true` 时运行 —— 非静音时系统回调够用，跑心跳纯属白耗电。
+     */
+    private val retryTick = object : Runnable {
+        override fun run() {
+            // `!started` ⟺ 已 stop()（服务已销毁）；`!isMuted` ⟺ 已解除静音。
+            // 两者任一成立都不该继续跑心跳 —— 尤其 `started` 这道，堵的是
+            // 「迟到路由回调在 stop() 之后把心跳复活」那个时序窗口（见 startHeartbeat 注释）。
+            if (!started || !isMuted) return
+            retryCount += 1
+            reapply("retry#$retryCount")
+            // reapply 可能已解除静音（耳机回来了）→ 不再续期，心跳自然停。
+            if (isMuted) {
+                mainHandler.postDelayed(this, RETRY_INTERVAL_MILLIS)
+            }
+        }
+    }
 
     /** 起播后调用：应用一次路由并开始监听热插拔。 */
     fun start() {
@@ -66,10 +128,13 @@ class AlarmAudioRouter(
         registerRoutingListener()
     }
 
-    /** 收尾调用：注销监听。放在 onDestroy。 */
+    /** 收尾调用：注销监听 + 停心跳。放在 onDestroy。 */
     fun stop() {
         if (!started) return
         started = false
+        // ⚠️ 必须先停心跳：否则服务销毁后 `postDelayed` 的回调还会在主线程跑，
+        //    既泄漏 Handler/实例，又可能在 player 已 release 后 setVolume 而崩溃。
+        stopHeartbeat()
         unregisterDeviceCallback()
         unregisterRoutingListener()
     }
@@ -88,11 +153,14 @@ class AlarmAudioRouter(
     private fun reapply(trigger: String) {
         val entries = enumerate()
         val decision = AudioRoutePlan.decide(mode, entries.map { it.kind })
+        // 存下最近一次决策，供 onRoutingChanged 用「决策语义」判漏音
+        // （只看 mode == HEADSET_ONLY 是硬编码，语义上不等于「绝不外放」）。
+        lastDecision = decision
 
         when (decision) {
             is RouteDecision.Silent -> {
                 applyMute(true)
-                report("静音·无可用耳机(绝不外放)")
+                report(RouteStatusText.muted(retryCount, mutedDurationMillis))
             }
 
             is RouteDecision.Play -> {
@@ -120,13 +188,59 @@ class AlarmAudioRouter(
     private fun applyPreferred(info: AudioDeviceInfo) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         runCatching { player.setPreferredDevice(info) }
+        // 开一段宽限窗口：设首选后系统必然异步回调一次路由变化，此刻 readback 可能仍是旧设备。
+        // 若旧值是扬声器会被误判成漏音，故窗口内的路由变化事件不触发拦截，只记录。
+        graceUntilMillis = SystemClock.elapsedRealtime() + APPLY_GRACE_MILLIS
     }
 
-    /** 静音开关：把播放音量归零 / 复位。 */
+    /**
+     * 静音开关：把播放音量归零 / 复位，并挂上自愈心跳的启停。
+     *
+     * 语义澄清：静音**不是**停播放 —— 播放仍在跑（音量归零），耳机一旦回来就能立刻出声。
+     */
     private fun applyMute(mute: Boolean) {
+        val wasMuted = isMuted
+        when {
+            // 进入静音（上升沿）：记录起点 + 启动心跳。
+            // 只在上升沿记起点，否则心跳每 5 秒重算时会把时长反复清零，「已静音多久」永远不增长。
+            mute && !wasMuted -> {
+                mutedSinceMillis = SystemClock.elapsedRealtime()
+                retryCount = 0
+                startHeartbeat()
+            }
+            // 解除静音（下降沿）：立刻停心跳 + 清计时，交给系统回调即可。
+            !mute && wasMuted -> {
+                stopHeartbeat()
+                retryCount = 0
+                mutedSinceMillis = 0L
+            }
+        }
         isMuted = mute
         val v = if (mute) 0f else 1f
         runCatching { player.setVolume(v, v) }
+    }
+
+    /**
+     * 启动自愈心跳（幂等：先清后挂）。
+     *
+     * ⚠️ `if (!started) return` 是**必需护栏**，不是防御性冗余：
+     *   [stop] 里的 `unregisterRoutingListener()` 只能取消「尚未触发」的监听，
+     *   **取消不了已经 post 进 mainHandler 队列、还没执行的 Runnable**（Handler 固有语义）。
+     *   于是存在这样的时序窗口：
+     *     路由回调已入队 → 用户点关闭 → stop()（started=false、心跳停）
+     *     → 迟到回调执行 → readback 仍拿到扬声器 → applyMute(true) 上升沿 → 本方法。
+     *   没有这道护栏，心跳会在服务销毁后复活并无限自续
+     *   （后果：Handler 泄漏 + 已停的通知被反复重发）。
+     */
+    private fun startHeartbeat() {
+        if (!started) return
+        mainHandler.removeCallbacks(retryTick)
+        mainHandler.postDelayed(retryTick, RETRY_INTERVAL_MILLIS)
+    }
+
+    /** 停掉自愈心跳。 */
+    private fun stopHeartbeat() {
+        mainHandler.removeCallbacks(retryTick)
     }
 
     /**
@@ -183,12 +297,35 @@ class AlarmAudioRouter(
     /**
      * MediaPlayer 的路由变化监听（API 28+）。
      *
-     * 只用于**回读记录**，不在这里重设首选设备 —— 否则与 setPreferredDevice 回环。
+     * ⛔ 防回环铁律：此回调里**只允许做「收紧」动作**（跑扬声器 → 静音），
+     * **绝不允许** `setPreferredDevice` / [applyPreferred]（重设首选）。
+     * 反方向（耳机回来 → 解除静音）由 5 秒自愈心跳负责。
+     * 违反这条会形成 `setPreferredDevice → 路由变化 → 再 setPreferredDevice` 死循环。
+     *
+     * 职责分离：**回调只收紧，心跳只放松。**
      */
     private fun registerRoutingListener() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         val listener = AudioRouting.OnRoutingChangedListener { _ ->
-            readback()?.let { report("路由变化→${label(it)}") }
+            val actual = readback() ?: return@OnRoutingChangedListener
+            val actualKind = mapType(actual.type)
+
+            val decision = lastDecision
+            val withinGrace = SystemClock.elapsedRealtime() < graceUntilMillis
+            // 「最近一次决策要求只走耳机」（Play + speakerFallback=false 即「绝不外放」档），
+            // 但实际却落到了内置扬声器 → 漏音，立刻收紧。
+            val leaksToSpeaker = decision is RouteDecision.Play &&
+                !decision.speakerFallback &&
+                actualKind == RouteDevice.BUILTIN_SPEAKER
+
+            when {
+                withinGrace -> report("路由变化→${label(actual)}(宽限)")
+                leaksToSpeaker -> {
+                    applyMute(true)
+                    report(RouteStatusText.leakBlocked())
+                }
+                else -> report("路由变化→${label(actual)}")
+            }
         }
         routingListener = listener
         runCatching { player.addOnRoutingChangedListener(listener, mainHandler) }

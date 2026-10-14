@@ -26,11 +26,10 @@ class AlarmReceiver : BroadcastReceiver() {
 
         val label = intent.getStringExtra(AlarmScheduler.EXTRA_LABEL).orEmpty()
 
-        // 一次性闹钟已触发：清掉待重排记录，避免重启后重复重排
-        AppSettings.load(context).let { s ->
-            if (s.pendingAlarm != null) {
-                AppSettings.save(context, s.withoutPendingAlarm())
-            }
+        // 一次性闹钟已触发：清掉待重排记录，避免重启后重复重排。
+        // 走 update 原子「读-改-写」，只改 pendingAlarm，不动别的字段。
+        AppSettings.update(context) { s ->
+            if (s.pendingAlarm != null) s.withoutPendingAlarm() else s
         }
 
         DiagLog.append(context, "ALARM_FIRE", "label=$label")

@@ -80,16 +80,14 @@ object AlarmScheduler {
             val info = AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent)
             am.setAlarmClock(info, operation)
 
-            // 落盘供开机重排
-            AppSettings.load(context).let { s ->
-                AppSettings.save(
-                    context,
-                    s.copy(
-                        pendingAlarm = PendingAlarm(
-                            triggerAtMillis = triggerAtMillis,
-                            requestCode = REQUEST_CODE,
-                            label = label,
-                        ),
+            // 落盘供开机重排。走 update 原子「读-改-写」，
+            // 只改 pendingAlarm，不会覆盖后台线程刚写入的 lastUpdateCheckMillis。
+            AppSettings.update(context) {
+                it.copy(
+                    pendingAlarm = PendingAlarm(
+                        triggerAtMillis = triggerAtMillis,
+                        requestCode = REQUEST_CODE,
+                        label = label,
                     ),
                 )
             }
@@ -111,8 +109,10 @@ object AlarmScheduler {
             val am = context.getSystemService(AlarmManager::class.java) ?: return@runCatching
             am.cancel(ringPendingIntent(context, null))
         }
-        AppSettings.load(context).let { s ->
-            if (s.pendingAlarm != null) AppSettings.save(context, s.withoutPendingAlarm())
+        // 清掉落盘的待重排记录。走 update 原子「读-改-写」，
+        // 只在确实存在待重排记录时才改动（其余字段原样保留）。
+        AppSettings.update(context) { s ->
+            if (s.pendingAlarm != null) s.withoutPendingAlarm() else s
         }
         DiagLog.append(context, "ALARM_CANCEL", "已取消应用内闹钟")
     }

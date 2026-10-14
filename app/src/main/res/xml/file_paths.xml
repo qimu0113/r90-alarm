@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 可共享的路径白名单。
+
+  只暴露 cacheDir/exports/ 一处 —— 使用历史导出的临时 Markdown 文件放这里。
+  刻意**不暴露 filesDir**：设置与使用历史是本机私有数据，不该有任何被外部
+  应用按 path 读取的通道。导出 = 由用户主动点分享，只授出这一个文件的读权限。
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>
