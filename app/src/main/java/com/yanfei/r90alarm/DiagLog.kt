@@ -14,7 +14,9 @@ import java.time.format.DateTimeFormatter
  * **不必一直连着手机**。
  *
  * 设计约束（继承 App 的整体定位）：
- * - 不联网。日志只写到 App 私有目录，导出靠系统分享/剪贴板，由用户自己决定发给谁。
+ * - 日志不联网。只写到 App 私有目录，导出靠系统分享/剪贴板，由用户自己决定发给谁。
+ *   （App 唯一的网络行为是检查更新，走 [com.yanfei.r90alarm.update.UpdateChecker]，
+ *    与本文档所述的日志链路完全无关。）
  * - 不需要任何权限。`filesDir` 是 App 自己的沙盒，读写无需权限。
  * - 不无限增长。超过 [MAX_LINES] 行自动丢掉最旧的。
  */

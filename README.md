@@ -2,7 +2,7 @@
 
 **打开就知道「现在睡，睡够 N 个 90 分钟周期该几点起」，点一下把那个时间交给系统时钟。**
 
-[English](README.en.md) ｜ 离线 · 零运行时权限 · 无数据库 · 无账号 · 纯原生 Compose
+[English](README.en.md) ｜ 计算全在本机 · 无数据库 · 无账号 · 纯原生 Compose
 
 <p align="center">
   <img src="docs/screenshots/main-dark.png" width="230" alt="主界面 · 深色">
@@ -26,13 +26,14 @@
 
 | | |
 |---|---|
-| 不联网 | **连 `INTERNET` 权限都不申请** —— 系统层面就没网，不是"承诺不上传" |
-| 不登录注册 | 没有任何账号体系 |
-| 不建数据库 | 无 Room、无 SQLite、无 SharedPreferences 业务数据 |
-| 不申请运行时权限 | 安装即用，**一次弹窗都没有** |
-| 不后台常驻 | 无 Service、无前台通知、无开机自启 |
+| 不攒数据 | 无 Room、无 SQLite、无 SharedPreferences 业务数据、无账号体系 |
+| 核心计算全在本机 | R90 推算、排期、响铃、音频路由**一个字节都不出设备** |
+| 联网只做一件事 | 声明了 `INTERNET`，**唯一用途是检查更新**：启动后静默查一次 + 「关于」页手动检查，只发一个 GET 读 GitHub 公开 release 元数据，**不上传任何本地数据**。这个请求失败完全不影响其它任何功能 |
+| 运行时权限只弹一次 | `POST_NOTIFICATIONS`（API 33+，首次启动申请）。没有它，响铃通知不进抽屉，「关闭 / 贪睡」按钮就没处按 —— 但拒绝也不影响响铃本身 |
+| 平时不常驻 | 只有**响铃期间**有前台服务（`mediaPlayback` 型，无运行时长上限）；不响铃时没有任何 Service 或前台通知 |
+| 开机不自拉 | `BootReceiver` 只在开机 / 应用更新后**重排**已设的闹钟，绝不启动响铃服务（API 35 禁止 BOOT_COMPLETED 起 mediaPlayback 前台服务） |
 
-代码量：6 个 Kotlin 源文件、1310 行。
+代码量：24 个 Kotlin 源文件、4689 行，另 6 个测试文件、1045 行（84 个单测）。
 
 ## 下载安装
 
@@ -47,11 +48,11 @@ APK 的基本信息：
 | 项 | 值 |
 |---|---|
 | 包名 | `com.yanfei.r90alarm` |
-| 版本 | 0.1 |
+| 版本 | 0.2 |
 | minSdk / targetSdk | 26 / 35（Android 8.0 及以上） |
-| 体积 | 1,146,076 字节（约 1.1 MB） |
-| APK SHA-256 | 见对应 [Release](https://github.com/qimu0113/r90-alarm/releases) 说明（每次构建都会写入当时产物的哈希） |
-| 权限 | 系统权限只声明 1 项：`com.android.alarm.permission.SET_ALARM`（normal 级，安装即授予、**不弹窗**）。另有一项 androidx 自动加入的 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`（应用自定义、无实际能力）。**没有 `INTERNET`** |
+| 体积 | 1,244,608 字节（约 1.2 MB） |
+| APK SHA-256 | `10e9d7d5a8233f81cfedaa8644398e9a3bcd52e7e041b4b4ea38b89bf09317fe`（另见对应 [Release](https://github.com/qimu0113/r90-alarm/releases) 说明） |
+| 权限 | 普通权限（安装即授予、不弹窗）：`SET_ALARM`、`USE_EXACT_ALARM`、`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`、`USE_FULL_SCREEN_INTENT`、`VIBRATE`、`RECEIVE_BOOT_COMPLETED`、`INTERNET`。运行时权限（弹一次）：`POST_NOTIFICATIONS`。另有一项 androidx 自动加入的 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`（应用自定义、无实际能力） |
 | 签名 | APK Signature Scheme **v2**（minSdk 26 已高于 v1 所需的 API 24，无需 v1） |
 | 来源 | 本仓库 `main` 分支源码构建，可用 `apksigner verify` 自行比对指纹 |
 
@@ -136,7 +137,7 @@ App 右上角 ⓘ 打开。
 | 层面 | 结论 |
 |---|---|
 | 系统版本 | **Android 8.0（API 26）及以上**。用到的 API 最低要求都 ≤ 26（`EXTRA_SKIP_UI` 需 API 11、`java.time` 需 API 26） |
-| 权限 | 只需 `SET_ALARM`（normal 级，安装即授予，**不弹窗**） |
+| 权限 | **系统时钟路径**只需 `SET_ALARM`（normal 级，安装即授予，**不弹窗**）。应用内闹钟另需 `USE_EXACT_ALARM` / `FOREGROUND_SERVICE_MEDIA_PLAYBACK` / `POST_NOTIFICATIONS`（唯一弹一次的那个）等 |
 | Android 11+ 包可见性 | 已用 `<intent>` 声明 `<queries>`，跨厂商通用 |
 | Android 12+ `exported` | 已显式声明 |
 | Android 15+ 边到边 | 依赖 `Scaffold` 默认 insets，Android 16 真机实测界面完整 |
@@ -252,11 +253,11 @@ cp gradle/wrapper/gradle-wrapper-official.properties gradle/wrapper/gradle-wrapp
 | 项 | 方法 | 结果 |
 |---|---|---|
 | 工程可编译 | `./gradlew assembleDebug` | ✅ `BUILD SUCCESSFUL` |
-| **41 个单元测试**（29 计算 + 12 日志/判定） | `--rerun-tasks --no-build-cache` 强制真跑 | ✅ `tests="41" failures="0" errors="0"` |
+| **84 个单元测试**（29 计算 + 12 日志/判定 + 18 音频路由 + 8 路由文案 + 7 历史导出 + 10 版本比较） | `--rerun-tasks --no-build-cache` 强制真跑 | ✅ `tests="84" failures="0" errors="0" skipped="0"` |
 | 核心算式（真 JVM） | `_verify/CeilVerify.java` 在 JDK 21 上运行 | ✅ 16/16 断言通过 |
 | 全量边界扫描 | Java 版扫 432 起点 × 9 周期 = 3888 结果 | ✅ 越界 0、取整方向异常 0、dayDiff 不一致 0 |
 | `SKIP_UI` 真机行为 | 真机 `am start` + `dumpsys alarm` 对照实验 | ✅ 遵守：无界面 + 闹钟正确写入 |
-| 无网络权限 | `aapt2 dump permissions` 直接读 APK | ✅ **确认无 `INTERNET`** |
+| 网络行为 | `aapt2 dump permissions` + 全仓库 grep 发送方 | ⚠️ **v0.2 起有 `INTERNET`**，全仓库唯一发送方是 `UpdateChecker`（检查更新一个 GET，不上传本地数据）。v0.1 时曾「确认无 `INTERNET`」，现已不成立 |
 | 安装到真机 | `adb install -r` | ✅ `Success`（注意：设备需已解锁，锁屏时会挂起） |
 | App 界面渲染 | 真机截屏 + `uiautomator` 取真实节点树 | ✅ 9 行齐全，大字时间逐秒跳动，日期正确 |
 | 取整逻辑（真机） | 逐行比对节点文本与算式 | ✅ 9/9 行与「向上取整」完全一致 |
@@ -265,9 +266,10 @@ cp gradle/wrapper/gradle-wrapper-official.properties gradle/wrapper/gradle-wrapp
 | **端到端：按钮 → 系统闹钟** | 点「设置」+ `logcat` + `dumpsys alarm` + 时钟列表 | ✅ 无界面、230ms 静默完成、闹钟落库且系统时钟列表可见 |
 | 诊断日志落盘 | 真机点一次，`run-as` 读 `files/diagnostic.log` | ✅ 两类记录均正确写入 |
 | 日志面板渲染 | 真机点 ⓘ + `uiautomator dump` | ✅ 标题/说明/日志正文/清空/导出/关闭 六项齐全 |
-| 运行时权限 | `dumpsys package` + `dumpsys netstats` | ✅ 仅 2 项权限、无运行时弹窗、**零网络记录** |
+| 运行时权限 | `dumpsys package` + `dumpsys netstats` | ✅ 只有 `POST_NOTIFICATIONS` 会弹窗（首次启动一次；拒绝不影响响铃，只影响通知可见性），其余全部安装即授予 |
 | release 构建 / R8 混淆 | `./gradlew assembleRelease` | ✅ `BUILD SUCCESSFUL`，R8 minify + 资源压缩 + lint-vital 全通过 |
-| APK 体积 | debug vs release（各自构建期实测） | 9,497,612 B → **1,146,076 B**（签名版，R8 缩掉约 88%） |
+| APK 体积 | debug vs release（各自构建期实测） | v0.1：9,497,612 B → 1,146,076 B；**v0.2 release：1,244,608 B** |
+| **v0.2 签名版装机实测** | 卸载 debug 后安装 release + 把设备上的 APK 拉回验签 | ✅ 字节级 SHA-256 与 Release 说明一致、证书与 v0.1 同钥；首启弹通知权限；首页 / 历史 / 关于 / 闹钟设置全通；闹钟成功排进 `AlarmManager`；全程无崩溃无 ANR |
 | 签名有效性 | `apksigner verify` | ✅ v2 方案通过，`CN=r90-alarm` |
 | Android API 断言 | 逐条核对官方文档 | ✅ 见 `docs/方案.md` 附录 A |
 | 独立复核 | 由另一名审阅者独立重跑构建 + 独立重算 | ✅ 揪出 4 处 P0 + 6 处 P1，含 1 处编造的 API 事实、1 处代码位置错误、1 处**测试缓存假阳性**（作者此前判断错） |

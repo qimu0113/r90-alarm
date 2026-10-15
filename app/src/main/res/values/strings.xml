@@ -11,7 +11,7 @@
     <!-- 使用历史页 -->
     <string name="history_title">使用历史</string>
     <string name="history_empty">（暂无记录。回首页设一次闹钟就会有了）</string>
-    <string name="history_hint">记录只在本机，导出由你决定发给谁。不联网、不上传。</string>
+    <string name="history_hint">记录只在本机，导出由你决定发给谁。（App 唯一的网络行为是检查更新，与历史记录无关）</string>
     <string name="history_export_share">分享文件</string>
     <string name="history_export_save">另存为…</string>
     <string name="history_clear">清空</string>

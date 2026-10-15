@@ -2,7 +2,7 @@
 
 **Open it and you immediately know: "if I fall asleep now, what time should I wake up to complete N sleep cycles of 90 minutes?" One tap hands that time to the system clock app.**
 
-[中文](README.md) ｜ Offline · Zero runtime permissions · No database · No account · Kotlin + Jetpack Compose
+[中文](README.md) ｜ All computation on-device · No database · No account · Kotlin + Jetpack Compose
 
 <p align="center">
   <img src="docs/screenshots/main-dark.png" width="230" alt="Main screen, dark">
@@ -28,13 +28,14 @@ The reason: aggressive battery optimisation on Chinese Android ROMs freezes back
 
 | | |
 |---|---|
-| No network | **It doesn't even request the `INTERNET` permission** — there is no network capability at the OS level, not merely a promise not to upload |
-| No sign-in | No account system of any kind |
-| No database | No Room, no SQLite, no business data in SharedPreferences |
-| No runtime permissions | Install and use — **not a single permission dialog** |
-| No background service | No `Service`, no foreground notification, no boot receiver |
+| No data hoarding | No Room, no SQLite, no business data in SharedPreferences, no account system |
+| Core computation stays on-device | R90 calculation, scheduling, ringing and audio routing **never leave the device** |
+| One single use of the network | `INTERNET` is declared, used **only for update checks**: one silent check after launch plus a manual one on the About screen. A single GET against GitHub's public release metadata, **uploading nothing local**. If it fails, nothing else is affected |
+| Exactly one runtime permission | `POST_NOTIFICATIONS` (API 33+, requested on first launch). Without it the ringing notification never reaches the shade and the Dismiss / Snooze buttons have nowhere to live — but declining it does not stop the alarm from ringing |
+| Not resident when idle | A foreground service exists **only while ringing** (`mediaPlayback` type, no runtime cap). No `Service` and no foreground notification otherwise |
+| No boot self-start | `BootReceiver` only **reschedules** alarms already set after boot / app update; it never starts the ringing service (API 35 forbids `BOOT_COMPLETED` from starting a `mediaPlayback` FGS) |
 
-Size: 6 Kotlin source files, 1310 lines.
+Size: 24 Kotlin source files, 4689 lines, plus 6 test files, 1045 lines (84 unit tests).
 
 ## Install
 
@@ -47,11 +48,11 @@ Size: 6 Kotlin source files, 1310 lines.
 | Item | Value |
 |---|---|
 | Package name | `com.yanfei.r90alarm` |
-| Version | 0.1 |
+| Version | 0.2 |
 | minSdk / targetSdk | 26 / 35 (Android 8.0 and up) |
-| Size | 1,146,076 bytes (~1.1 MB) |
-| APK SHA-256 | See the corresponding [Release](https://github.com/qimu0113/r90-alarm/releases) notes (each build records the hash of the artifact it produced) |
-| Permissions | Exactly one system permission is declared: `com.android.alarm.permission.SET_ALARM` (normal level, granted at install, **no dialog**). One further permission, `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, is added automatically by androidx — it is app-defined and grants no actual capability. **No `INTERNET`** |
+| Size | 1,244,608 bytes (~1.2 MB) |
+| APK SHA-256 | `10e9d7d5a8233f81cfedaa8644398e9a3bcd52e7e041b4b4ea38b89bf09317fe` (also recorded in the corresponding [Release](https://github.com/qimu0113/r90-alarm/releases) notes) |
+| Permissions | Normal level (granted at install, **no dialog**): `SET_ALARM`, `USE_EXACT_ALARM`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `USE_FULL_SCREEN_INTENT`, `VIBRATE`, `RECEIVE_BOOT_COMPLETED`, `INTERNET`. Runtime (one dialog): `POST_NOTIFICATIONS`. One further permission, `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, is added automatically by androidx — it is app-defined and grants no actual capability |
 | Signing | APK Signature Scheme **v2** (minSdk 26 is already above the API 24 that makes v1 necessary) |
 
 Signing certificate SHA-256 fingerprint:
@@ -251,11 +252,11 @@ cp gradle/wrapper/gradle-wrapper-official.properties gradle/wrapper/gradle-wrapp
 | Item | Method | Result |
 |---|---|---|
 | Project compiles | `./gradlew assembleDebug` | ✅ `BUILD SUCCESSFUL` |
-| **41 unit tests** (29 calculation + 12 log/verdict) | `--rerun-tasks --no-build-cache` to force a real run | ✅ `tests="41" failures="0" errors="0"` |
+| **84 unit tests** (29 calculation + 12 log/verdict + 18 audio routing + 8 route copy + 7 history export + 10 version compare) | `--rerun-tasks --no-build-cache` to force a real run | ✅ `tests="84" failures="0" errors="0" skipped="0"` |
 | Core arithmetic, real JVM | `_verify/CeilVerify.java` on JDK 21 | ✅ 16/16 assertions pass |
 | Exhaustive boundary sweep | Java version, 432 start points × 9 cycles = 3888 results | ✅ 0 out-of-range, 0 wrong rounding direction, 0 `dayDiff` inconsistencies |
 | `SKIP_UI` on device | `am start` + `dumpsys alarm` control experiments | ✅ Honoured: no UI, alarm correctly written |
-| No network permission | `aapt2 dump permissions` on the APK | ✅ **Confirmed absent** |
+| Network behaviour | `aapt2 dump permissions` + repo-wide grep of senders | ⚠️ **`INTERNET` exists since v0.2**, with exactly one sender repo-wide: `UpdateChecker` (a single GET for update checks, uploading nothing local). v0.1 once "confirmed no `INTERNET`" — that no longer holds |
 | Installs on device | `adb install -r` | ✅ `Success` (device must be unlocked; it hangs on the lock screen) |
 | UI renders | Screenshot + `uiautomator` node dump | ✅ All 9 rows present, large clock ticking every second |
 | Rounding on device | Row-by-row text vs. formula | ✅ 9/9 rows match round-up |
@@ -264,7 +265,8 @@ cp gradle/wrapper/gradle-wrapper-official.properties gradle/wrapper/gradle-wrapp
 | **End to end: button → system alarm** | Tap + `logcat` + `dumpsys alarm` + clock list | ✅ Silent, 230 ms, alarm stored and visible in the clock app |
 | Diagnostic log written | `run-as` read of `files/diagnostic.log` | ✅ Both record types written correctly |
 | Log panel renders | `uiautomator dump` | ✅ Title / description / body / clear / export / close all present |
-| Runtime permissions | `dumpsys package` + `dumpsys netstats` | ✅ 2 permissions only, no dialog, **zero network records** |
+| Runtime permissions | `dumpsys package` + `dumpsys netstats` | ✅ Only `POST_NOTIFICATIONS` ever shows a dialog (once, on first launch; declining it does not stop the alarm, only notification visibility). Everything else is granted at install |
+| **v0.2 signed build on device** | Uninstall debug, install release, pull the installed APK back and verify | ✅ Byte-level SHA-256 matches the Release notes, certificate identical to v0.1; notification permission requested on first launch; home / history / about / alarm settings all render; alarm lands in `AlarmManager`; no crash, no ANR throughout |
 | Release build / R8 | `./gradlew assembleRelease` | ✅ R8 minify + resource shrinking + lint-vital all pass |
 | APK size | debug vs release (each measured at build time) | 9,497,612 B → **1,146,076 B** (signed; R8 cuts ~88%) |
 | Signature valid | `apksigner verify` | ✅ v2 scheme, `CN=r90-alarm` |

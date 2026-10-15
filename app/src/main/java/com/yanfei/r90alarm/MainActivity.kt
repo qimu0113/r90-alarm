@@ -75,6 +75,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -256,9 +259,15 @@ private fun R90Screen(
     var fullScreenOk by remember { mutableStateOf(canUseFullScreen(context)) }
 
     // 每次回到前台重读一次：用户可能刚才去系统设置里开启了它，返回本行应自动消失。
+    //
+    // 顺带重读 settings。待响闹钟横幅依赖它，而 pendingAlarm 有两个**本页面之外**的
+    // 写者：AlarmScheduler.schedule()（设闹钟时）和 AlarmReceiver.onReceive()（响铃后
+    // 清掉它）。只在启动时读一次快照的话，闹钟响完回到首页会看到一条「幽灵横幅」——
+    // 点取消还会去取消一个早已不存在的闹钟。
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             fullScreenOk = canUseFullScreen(context)
+            settings = AppSettings.load(context)
         }
     }
 
@@ -390,6 +399,31 @@ private fun R90Screen(
                 inAppMode = inAppMode,
                 onSelect = { inAppMode = it },
             )
+
+            // 待响的应用内闹钟横幅 + 取消入口。
+            //
+            // 为什么必须有（装机实测确认的缺口）：AlarmScheduler.cancel() 早就写好了，
+            // 但一直零调用方 —— 设了本机闹钟后，用户只能等它响、或重新设一个覆盖，
+            // 状态栏那颗闹钟图标也会一路挂到响铃。取消是「撤销一个已生效的系统状态」，
+            // 必须和「当前排着哪个闹钟」一样一眼可见，藏在二级菜单里等于没有。
+            settings.pendingAlarm?.let { pending ->
+                val (timeText, dayLabel) = formatPendingAlarm(pending.triggerAtMillis, is24Hour)
+                PendingAlarmRow(
+                    timeText = timeText,
+                    dayLabel = dayLabel,
+                    onCancel = {
+                        AlarmScheduler.cancel(context)
+                        // 立刻重读，别等下一次 onResume —— 用户点了取消，横幅应当场消失。
+                        settings = AppSettings.load(context)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                "已取消本机闹钟 $timeText",
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    },
+                )
+            }
 
             // F3：全屏提醒未开启时，静默提示一行（可点跳系统设置）—— 不弹对话框。
             if (!fullScreenOk) {
@@ -688,7 +722,7 @@ private fun DiagLogDialog(context: Context, onDismiss: () -> Unit) {
             Column {
                 Text(
                     "记录每次设闹钟的结果与设备环境，供离线排查用。" +
-                            "不联网、不上传，内容只在本机。",
+                            "日志本身只在本机；App 唯一的网络行为是检查更新，与日志无关。",
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -1083,6 +1117,67 @@ private fun FullScreenHintRow(onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.primary,
         )
     }
+}
+
+/**
+ * 待响闹钟横幅：目标时刻 + 一个「取消」。
+ *
+ * 为什么单独一行而不是塞进设置对话框：取消是撤销一个**已经生效的系统状态**
+ * （AlarmManager 里真排着东西、状态栏真挂着图标），必须和「当前排着哪个闹钟」
+ * 一样一眼可见。
+ */
+@Composable
+private fun PendingAlarmRow(
+    timeText: String,
+    dayLabel: String,
+    onCancel: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "⏰ 本机闹钟 $timeText",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    text = "$dayLabel · 状态栏闹钟图标会挂到它响",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            TextButton(onClick = onCancel) {
+                Text("取消", fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+/**
+ * 把待响闹钟的触发时刻摊成「时间 + 今天/明天」。
+ *
+ * 跨天必须显式说出来：睡前设的闹钟，第二天回到首页时只写「今天」会看错日子。
+ */
+private fun formatPendingAlarm(triggerAtMillis: Long, is24Hour: Boolean): Pair<String, String> {
+    val zone = ZoneId.systemDefault()
+    val at = Instant.ofEpochMilli(triggerAtMillis).atZone(zone)
+    val today = LocalDate.now(zone)
+    val dayLabel = when (at.toLocalDate()) {
+        today -> "今天"
+        today.plusDays(1) -> "明天"
+        else -> at.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
+    }
+    return formatTime(at.hour, at.minute, is24Hour) to dayLabel
 }
 
 /**

@@ -22,6 +22,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -33,6 +40,9 @@ import com.yanfei.r90alarm.R90Theme
 import com.yanfei.r90alarm.settings.AppSettings
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+/** 标签缺失时的回落值。 */
+private const val DEFAULT_RING_LABEL = "R90 闹钟"
 
 /**
  * 响铃页。
@@ -82,10 +92,22 @@ class RingActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        // 只有本进程发得出这条广播，所以不导出。
-        // API 33+ 需要显式传接收器标志，低版本没有这个重载。
+    /**
+     * 响铃标签。做成可变状态而不是 onCreate 里的局部 val ——
+     * 本页是 `singleTop`，可能被「复用」而不是重建（见 [onNewIntent]）。
+     */
+    private val label = mutableStateOf(DEFAULT_RING_LABEL)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // P3-1：接收器注册窗口从 onStart/onStop 挪到 onCreate/onDestroy。
+        //
+        // 放在 onStart/onStop 时会漏一条路径：停铃若发生在页面退到后台**之后**，
+        // 广播到达时接收器已注销；而本页在清单里是 excludeFromRecents + 独立
+        // taskAffinity，用户没法从最近任务把它捞回来，onResume 兜底也没有执行机会
+        // —— 页面以「内存里不可见的孤儿」形态留着。注册在整个生命周期内保持有效后，
+        // 后台停铃的广播能直接 finish 这个不可见页面。
         val filter = IntentFilter(AlarmPlaybackService.ACTION_RING_STOPPED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(ringStoppedReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -93,23 +115,60 @@ class RingActivity : ComponentActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(ringStoppedReceiver, filter)
         }
+
+        showOverLockscreen()
+
+        label.value = readLabel(intent)
+        val snoozeMinutes = AppSettings.load(this).snoozeMinutes
+
+        setContent {
+            R90Theme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    RingScreen(
+                        label = label.value,
+                        snoozeMinutes = snoozeMinutes,
+                        onDismiss = {
+                            AlarmPlaybackService.dismiss(this, source = "activity")
+                            finish()
+                        },
+                        onSnooze = {
+                            AlarmPlaybackService.snooze(this, label.value, source = "activity")
+                            finish()
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * P3-3：本页是 `singleTop`，被复用时走的是这里而不是 [onCreate]。
+     *
+     * 触发场景：上次响铃留下个孤儿页面，下一次闹钟到点经 singleTop 复用它 ——
+     * 不刷新标签的话，用户看到的是**上一个**闹钟的名字。
+     */
+    override fun onNewIntent(newIntent: Intent) {
+        super.onNewIntent(newIntent)
+        setIntent(newIntent)
+        label.value = readLabel(newIntent)
+    }
+
+    override fun onDestroy() {
+        // 与 onCreate 的注册配对。runCatching 兜住「注册当时就失败了」的极罕见情况，
+        // 别让关闭路径因为注销抛异常。
+        runCatching { unregisterReceiver(ringStoppedReceiver) }
+        super.onDestroy()
     }
 
     override fun onStop() {
         super.onStop()
-        // 用 runCatching 包住：注册失败（极罕见）不该让「关闭」路径抛异常。
-        runCatching { unregisterReceiver(ringStoppedReceiver) }
-        // 在注销时再问一次：已经不响铃了就当场退场。
+        // 退到后台的那一刻再问一次：已经不响铃了就就地退场。
         //
-        // ⚠️ 覆盖边界（别照抄成"已完全解决"，独立复核对过）：
-        // 这一行只关得掉「**退后台那一刻闹钟已经停了**」的情况。若停铃发生在页面
-        // 退到后台**之后**（例如用户按了 Home，十几分钟后最长响铃到点自动停），
-        // 广播到达时接收器已注销、照样丢失，而 RingActivity 在清单里是
-        // excludeFromRecents + 独立 taskAffinity，用户没法从最近任务把它捞回来，
-        // onResume 兜底也没有执行机会 —— 页面会以「内存里不可见的孤儿」形态留着。
-        // 没有 UI、没有声音，只是占内存，直到下一次响钟经 singleTop 复活时才清掉。
-        // 要彻底收口，得把接收器注册从 onStart/onStop 挪到 onCreate/onDestroy
-        // （后台停铃的广播就能直接 finish 这个不可见页面）—— 已列为后续跟进项。
+        // 有了 onCreate/onDestroy 的注册后这条已属冗余（广播照样能 finish 这个
+        // 不可见页面），留着只是让退出更及时 —— 不必等异步广播投递那一跳。
         if (!AlarmPlaybackService.isRinging) finish()
     }
 
@@ -120,37 +179,10 @@ class RingActivity : ComponentActivity() {
         if (!AlarmPlaybackService.isRinging) finish()
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        showOverLockscreen()
-
-        val label = intent.getStringExtra(AlarmPlaybackService.EXTRA_LABEL)
-            .orEmpty()
-            .ifBlank { "R90 闹钟" }
-        val snoozeMinutes = AppSettings.load(this).snoozeMinutes
-
-        setContent {
-            R90Theme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    RingScreen(
-                        label = label,
-                        snoozeMinutes = snoozeMinutes,
-                        onDismiss = {
-                            AlarmPlaybackService.dismiss(this, source = "activity")
-                            finish()
-                        },
-                        onSnooze = {
-                            AlarmPlaybackService.snooze(this, label, source = "activity")
-                            finish()
-                        },
-                    )
-                }
-            }
-        }
-    }
+    /** 从 intent 里取标签，空值回落默认。 */
+    private fun readLabel(from: Intent?): String =
+        from?.getStringExtra(AlarmPlaybackService.EXTRA_LABEL).orEmpty()
+            .ifBlank { DEFAULT_RING_LABEL }
 
     /**
      * 让响铃页在锁屏上直接可见、并点亮屏幕。
@@ -180,7 +212,18 @@ private fun RingScreen(
     onDismiss: () -> Unit,
     onSnooze: () -> Unit,
 ) {
-    val clock = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+    // P3-3：时钟必须自己走。
+    //
+    // 原来是在组合期求值一次，而最长响铃可以到 15 分钟 —— 用户半夜被叫醒、
+    // 躺了一会儿再看屏幕，大字时间还停在刚响那一刻，比实际慢好几分钟。
+    var clock by remember { mutableStateOf(clockText()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            clock = clockText()
+            // 对齐到整秒边界再睡，避免「求值 + 组合 + 调度」的耗时累积成漂移。
+            delay(1_000L - (System.currentTimeMillis() % 1_000L))
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -229,3 +272,7 @@ private fun RingScreen(
         }
     }
 }
+
+/** 大字时钟的当前文本。24 小时制 —— 半夜被叫醒时「AM/PM」只会多添一层辨识成本。 */
+private fun clockText(): String =
+    LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
