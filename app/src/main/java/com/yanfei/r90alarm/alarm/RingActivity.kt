@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yanfei.r90alarm.DiagLog
 import com.yanfei.r90alarm.R90Theme
 import com.yanfei.r90alarm.R
 import com.yanfei.r90alarm.settings.AppSettings
@@ -133,10 +134,15 @@ class RingActivity : ComponentActivity() {
                         label = label.value,
                         snoozeMinutes = snoozeMinutes,
                         onDismiss = {
+                            // 记一行「按钮路径」—— 与通知路径（来源=notification）、
+                            // 最长响铃自动停（AUTO_STOP）区分开，排查「到底谁把闹钟关了」
+                            // 时有据可查。真机上就靠这个 tag 定位过一次误触。
+                            DiagLog.append(this, "RING_BTN", "响铃页「关闭」按钮")
                             AlarmPlaybackService.dismiss(this, source = "activity")
                             finish()
                         },
                         onSnooze = {
+                            DiagLog.append(this, "RING_BTN", "响铃页「贪睡」按钮")
                             AlarmPlaybackService.snooze(this, label.value, source = "activity")
                             finish()
                         },
@@ -171,14 +177,20 @@ class RingActivity : ComponentActivity() {
         //
         // 有了 onCreate/onDestroy 的注册后这条已属冗余（广播照样能 finish 这个
         // 不可见页面），留着只是让退出更及时 —— 不必等异步广播投递那一跳。
-        if (!AlarmPlaybackService.isRinging) finish()
+        if (!AlarmPlaybackService.isRinging) {
+            DiagLog.append(this, "RING_SELF_FINISH", "onStop 自检：已不响铃 → 退场")
+            finish()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         // 兜底：万一广播投递丢在了注册之前（例如系统在服务刚销毁后才把本页拉起），
         // 这里再问一次。没有在响铃却停在响铃页，是没有意义的页面。
-        if (!AlarmPlaybackService.isRinging) finish()
+        if (!AlarmPlaybackService.isRinging) {
+            DiagLog.append(this, "RING_SELF_FINISH", "onResume 自检：已不响铃 → 退场")
+            finish()
+        }
     }
 
     /** 从 intent 里取标签；空值回落本地化的默认名。 */

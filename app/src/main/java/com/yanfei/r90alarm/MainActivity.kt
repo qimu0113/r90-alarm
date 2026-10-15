@@ -265,6 +265,13 @@ private fun R90Screen(
     // 写者：AlarmScheduler.schedule()（设闹钟时）和 AlarmReceiver.onReceive()（响铃后
     // 清掉它）。只在启动时读一次快照的话，闹钟响完回到首页会看到一条「幽灵横幅」——
     // 点取消还会去取消一个早已不存在的闹钟。
+    //
+    // ⚠️ 覆盖边界（别照抄成"已完全解决"）：repeatOnLifecycle 只在生命周期**状态切换**时
+    // 跑，所以它兜得住「从响铃页/设置页返回」，兜不住「用户一直停在首页」时发生的变化。
+    // 已知两条：
+    // ① 设闹钟那一刻 —— 已在 Scheduled 分支里主动重读补上；
+    // ② 响铃清场那一刻（FSI 没把首页遮住时）—— 横幅会短暂显示过期信息，
+    //    但取消回调会再重读一次磁盘，点一下即消失，且 cancel 幂等无害。
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             fullScreenOk = canUseFullScreen(context)
@@ -453,11 +460,21 @@ private fun R90Screen(
                                     context, triggerAt, context.getString(R.string.alarm_label_cycles, result.cycles),
                                 )
                                 when (scheduleResult) {
-                                    AlarmScheduler.Result.Scheduled -> scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            context.getString(R.string.snack_set_in_app, timeText),
-                                            duration = SnackbarDuration.Short,
-                                        )
+                                    AlarmScheduler.Result.Scheduled -> {
+                                        // 立刻重读快照，让待响横幅当场出现。
+                                        //
+                                        // 为什么不能只靠 repeatOnLifecycle(RESUMED)：那个回调只在页面
+                                        // 真正走一遍 onPause→onResume 时才跑，而「点设置排闹钟」
+                                        // 全程不引发生命周期切换（AlertDialog 是应用内窗口）。
+                                        // 不主动重读的话，横幅要等用户下次切走再回来才出现 ——
+                                        // 装机实测第一版就漏了这条，闹钟排好了横幅却不显示。
+                                        settings = AppSettings.load(context)
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                context.getString(R.string.snack_set_in_app, timeText),
+                                                duration = SnackbarDuration.Short,
+                                            )
+                                        }
                                     }
 
                                     AlarmScheduler.Result.NeedExactAlarmPermission -> {
