@@ -6,6 +6,7 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import com.yanfei.r90alarm.R
 
 /**
  * 系统铃声选择器（[RingtoneManager.ACTION_RINGTONE_PICKER]）的封装。
@@ -26,19 +27,15 @@ object RingtonePickerHelper {
     /** 选择器 action 字符串（供 `<queries>` 与意图构建共用）。 */
     const val ACTION_RINGTONE_PICKER = "android.intent.action.RINGTONE_PICKER"
 
-    private const val PICKER_TITLE = "选择闹钟铃声"
-
-    /** 未选铃声时的展示文案。 */
-    const val DEFAULT_LABEL = "系统默认"
 
     /** 构造选择器意图。[currentUri] 非空时会预选中当前铃声。 */
-    fun buildPickerIntent(currentUri: Uri?): Intent =
+    fun buildPickerIntent(context: Context, currentUri: Uri?): Intent =
         Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
             putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
             putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
             // 不提供「静音」——闹钟静音没有意义，只会让人误设
             putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, PICKER_TITLE)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, context.getString(R.string.picker_title))
             if (currentUri != null) {
                 putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri)
             }
@@ -68,11 +65,11 @@ object RingtonePickerHelper {
 
     /** 人类可读的铃声名。取不到就退回首段 / 兜底文案。 */
     fun displayName(context: Context, uri: Uri?): String {
-        if (uri == null) return DEFAULT_LABEL
+        if (uri == null) return context.getString(R.string.picker_default)
         return runCatching {
             RingtoneManager.getRingtone(context, uri)?.getTitle(context)
         }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: uri.lastPathSegment
-            ?: "已选择"
+            ?: context.getString(R.string.picker_selected)
     }
 }

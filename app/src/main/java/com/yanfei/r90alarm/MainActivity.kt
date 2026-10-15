@@ -80,6 +80,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Locale
 
 import android.Manifest
@@ -340,13 +341,13 @@ private fun R90Screen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("R90 闹钟") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = { alarmSettingsOpen = true }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "闹钟设置")
+                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.cd_alarm_settings))
                     }
                     IconButton(onClick = { logOpen = true }) {
-                        Icon(Icons.Filled.Info, contentDescription = "诊断日志")
+                        Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.cd_diag_log))
                     }
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
@@ -417,7 +418,7 @@ private fun R90Screen(
                         settings = AppSettings.load(context)
                         scope.launch {
                             snackbarHostState.showSnackbar(
-                                "已取消本机闹钟 $timeText",
+                                context.getString(R.string.snack_cancelled, timeText),
                                 duration = SnackbarDuration.Short,
                             )
                         }
@@ -449,12 +450,12 @@ private fun R90Screen(
                                 val triggerAt = computeTriggerMillis(now, result)
                                 ensureNotifPermission()
                                 val scheduleResult = AlarmScheduler.schedule(
-                                    context, triggerAt, "R90 · ${result.cycles} 周期",
+                                    context, triggerAt, context.getString(R.string.alarm_label_cycles, result.cycles),
                                 )
                                 when (scheduleResult) {
                                     AlarmScheduler.Result.Scheduled -> scope.launch {
                                         snackbarHostState.showSnackbar(
-                                            "已设置本机闹钟 $timeText",
+                                            context.getString(R.string.snack_set_in_app, timeText),
                                             duration = SnackbarDuration.Short,
                                         )
                                     }
@@ -463,7 +464,7 @@ private fun R90Screen(
                                         openExactAlarmSettings(context)
                                         scope.launch {
                                             snackbarHostState.showSnackbar(
-                                                "需要「闹钟与提醒」权限，已打开系统设置",
+                                                context.getString(R.string.snack_need_exact_alarm),
                                                 duration = SnackbarDuration.Long,
                                             )
                                         }
@@ -471,7 +472,7 @@ private fun R90Screen(
 
                                     is AlarmScheduler.Result.Failed -> scope.launch {
                                         snackbarHostState.showSnackbar(
-                                            "本机闹钟设置失败：${scheduleResult.reason}",
+                                            context.getString(R.string.snack_in_app_failed, scheduleResult.reason),
                                             duration = SnackbarDuration.Long,
                                         )
                                     }
@@ -500,7 +501,7 @@ private fun R90Screen(
                             if (activity == null) {
                                 scope.launch {
                                     snackbarHostState.showSnackbar(
-                                        "无法获取界面上下文，请重开 App 再试",
+                                        context.getString(R.string.snack_no_activity_context),
                                         duration = SnackbarDuration.Short,
                                     )
                                 }
@@ -521,7 +522,7 @@ private fun R90Screen(
                                 is SystemAlarmLauncher.Outcome.SilentRequested ->
                                     scope.launch {
                                         snackbarHostState.showSnackbar(
-                                            "已请求系统时钟设置 $timeText",
+                                            context.getString(R.string.snack_system_clock_requested, timeText),
                                             duration = SnackbarDuration.Short,
                                         )
                                     }
@@ -529,7 +530,7 @@ private fun R90Screen(
                                 is SystemAlarmLauncher.Outcome.UiFallback ->
                                     scope.launch {
                                         snackbarHostState.showSnackbar(
-                                            "已打开系统时钟，请确认 $timeText",
+                                            context.getString(R.string.snack_system_clock_opened, timeText),
                                             duration = SnackbarDuration.Short,
                                         )
                                     }
@@ -590,7 +591,11 @@ private fun R90Screen(
                     noClockDialogTime = null
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            if (ok) "已打开系统时钟" else "系统时钟列表也打不开",
+                            if (ok) {
+                                context.getString(R.string.snack_alarm_list_opened)
+                            } else {
+                                context.getString(R.string.snack_alarm_list_failed)
+                            },
                             duration = SnackbarDuration.Short,
                         )
                     }
@@ -605,7 +610,7 @@ private fun R90Screen(
                     } catch (_: Exception) {
                         scope.launch {
                             snackbarHostState.showSnackbar(
-                                "打不开应用管理页",
+                                context.getString(R.string.snack_cannot_open_app_settings),
                                 duration = SnackbarDuration.Short,
                             )
                         }
@@ -614,11 +619,11 @@ private fun R90Screen(
                 onCopyTime = {
                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE)
                             as ClipboardManager
-                    cm.setPrimaryClip(ClipData.newPlainText("R90 起床时间", timeText))
+                    cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.clip_wake_label), timeText))
                     noClockDialogTime = null
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            "已复制 $timeText，可手动到系统时钟里设",
+                            context.getString(R.string.snack_copied, timeText),
                             duration = SnackbarDuration.Short,
                         )
                     }
@@ -637,7 +642,7 @@ private fun R90Screen(
                 ringtoneLabel = ringtoneLabel,
                 onPickRingtone = {
                     ringtoneLauncher.launch(
-                        RingtonePickerHelper.buildPickerIntent(settings.ringtoneUri?.let(Uri::parse))
+                        RingtonePickerHelper.buildPickerIntent(context, settings.ringtoneUri?.let(Uri::parse))
                     )
                 },
                 onRouteChange = { mode -> applySettings { it.copy(routeMode = mode) } },
@@ -717,17 +722,16 @@ private fun DiagLogDialog(context: Context, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("诊断日志") },
+        title = { Text(stringResource(R.string.diag_title)) },
         text = {
             Column {
                 Text(
-                    "记录每次设闹钟的结果与设备环境，供离线排查用。" +
-                            "日志本身只在本机；App 唯一的网络行为是检查更新，与日志无关。",
+                    stringResource(R.string.diag_desc),
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(8.dp))
                 if (showEmpty) {
-                    Text("（暂无记录。去点一次「设置」就会有了）", fontSize = 13.sp)
+                    Text(stringResource(R.string.diag_empty), fontSize = 13.sp)
                 } else {
                     Box(
                         modifier = Modifier
@@ -754,20 +758,20 @@ private fun DiagLogDialog(context: Context, onDismiss: () -> Unit) {
                     val activity = context.findActivity()
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, "R90 闹钟 · 诊断日志")
+                        putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.diag_share_subject))
                         putExtra(Intent.EXTRA_TEXT, text)
                     }
                     val ok = runCatching {
-                        activity?.startActivity(Intent.createChooser(send, "导出日志"))
+                        activity?.startActivity(Intent.createChooser(send, context.getString(R.string.diag_share_chooser)))
                     }.isSuccess
                     if (!ok) {
                         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("R90 诊断日志", text))
-                        hint = "分享面板打不开，已复制到剪贴板"
+                        cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.clip_diag_label), text))
+                        hint = context.getString(R.string.share_panel_failed_to_clipboard)
                     }
                 },
                 enabled = !showEmpty,
-            ) { Text("导出") }
+            ) { Text(stringResource(R.string.diag_export)) }
         },
         dismissButton = {
             Column {
@@ -775,11 +779,11 @@ private fun DiagLogDialog(context: Context, onDismiss: () -> Unit) {
                     onClick = {
                         DiagLog.clear(context)
                         text = DiagLog.readAll(context)
-                        hint = "已清空"
+                        hint = context.getString(R.string.diag_hint_cleared)
                     },
                     enabled = !showEmpty,
-                ) { Text("清空") }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                ) { Text(stringResource(R.string.diag_clear)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.diag_close)) }
             }
         },
     )
@@ -802,33 +806,32 @@ private fun NoClockAppDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("找不到系统时钟应用") },
+        title = { Text(stringResource(R.string.nospace_title)) },
         text = {
             Column {
                 Text(
-                    "你的手机上没有能响应「设置闹钟」的应用。" +
-                            "可能没装时钟、或时钟被系统禁用了。",
+                    stringResource(R.string.nospace_body_intro),
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "要设置的时间是 $timeText。可以试试：",
+                    stringResource(R.string.nospace_body_time, timeText),
                     fontWeight = FontWeight.Medium,
                 )
                 Spacer(Modifier.height(8.dp))
-                Text("1. 打开系统时钟的闹钟列表，手动添加", fontSize = 13.sp)
+                Text(stringResource(R.string.nospace_step1), fontSize = 13.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("2. 去应用管理里看「时钟」是不是被禁用了", fontSize = 13.sp)
+                Text(stringResource(R.string.nospace_step2), fontSize = 13.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("3. 复制时间，稍后自己设", fontSize = 13.sp)
+                Text(stringResource(R.string.nospace_step3), fontSize = 13.sp)
             }
         },
         confirmButton = {
-            TextButton(onClick = onOpenAlarmList) { Text("打开时钟") }
+            TextButton(onClick = onOpenAlarmList) { Text(stringResource(R.string.nospace_open_clock)) }
         },
         dismissButton = {
             Column {
-                TextButton(onClick = onOpenAppSettings) { Text("应用管理") }
-                TextButton(onClick = onCopyTime) { Text("复制时间") }
+                TextButton(onClick = onOpenAppSettings) { Text(stringResource(R.string.nospace_app_settings)) }
+                TextButton(onClick = onCopyTime) { Text(stringResource(R.string.nospace_copy_time)) }
             }
         },
     )
@@ -842,7 +845,9 @@ private fun ClockHeader(now: ZonedDateTime, is24Hour: Boolean) {
         DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm:ss" else "h:mm:ss", Locale.getDefault())
     }
     val dateFormat = remember {
-        DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.CHINA)
+        // 本地化长日期，不手写 pattern：中文「2026年10月15日星期四」，
+        // 英文「Wednesday, October 15, 2026」—— 交给框架按系统语言生成。
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)
     }
 
     Column(
@@ -889,7 +894,7 @@ private fun FallAsleepSelector(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "准备入睡",
+            text = stringResource(R.string.fall_asleep_title),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -899,7 +904,11 @@ private fun FallAsleepSelector(
                 onClick = { onSelect(minutes) },
                 label = {
                     Text(
-                        text = if (minutes == 0) "立即" else "$minutes 分",
+                        text = if (minutes == 0) {
+                            stringResource(R.string.fall_asleep_now)
+                        } else {
+                            stringResource(R.string.minutes_short, minutes)
+                        },
                         fontSize = 13.sp,
                     )
                 },
@@ -960,28 +969,43 @@ private fun CycleRow(
             }
 
             Button(onClick = onClick) {
-                Text("设置")
+                Text(stringResource(R.string.row_set))
             }
         }
     }
 }
 
+/**
+ * 行内的小字日期标签，如「今天 · 周四」「明天 10月12日 · 周一」。
+ *
+ * 必须是 [Composable]：今天 / 明天 / 周几都要跟着系统语言走。
+ *
+ * ⚠️ 与 [R90Calculator.relativeDayLabel] 的分工：那个是**逻辑层**的纯函数
+ * （不依赖 Android、有自己的单测），这里是 UI 层的本地化版本。两者对 `dayDiff`
+ * 的分段规则必须一致，改一边记得改另一边。
+ */
+@Composable
 private fun buildDateLabel(r: R90Calculator.Result): String {
-    val dayText = R90Calculator.relativeDayLabel(r.dayDiff)
+    val dayText = when (r.dayDiff) {
+        0 -> stringResource(R.string.day_today)
+        1 -> stringResource(R.string.day_tomorrow)
+        2 -> stringResource(R.string.day_after_tomorrow)
+        else -> stringResource(R.string.day_nth, r.dayDiff + 1)
+    }
     val weekText = when (r.wakeTime.dayOfWeek.value) {
-        1 -> "周一"
-        2 -> "周二"
-        3 -> "周三"
-        4 -> "周四"
-        5 -> "周五"
-        6 -> "周六"
-        else -> "周日"
+        1 -> stringResource(R.string.weekday_1)
+        2 -> stringResource(R.string.weekday_2)
+        3 -> stringResource(R.string.weekday_3)
+        4 -> stringResource(R.string.weekday_4)
+        5 -> stringResource(R.string.weekday_5)
+        6 -> stringResource(R.string.weekday_6)
+        else -> stringResource(R.string.weekday_7)
     }
     return if (r.dayDiff == 0) {
-        "$dayText · $weekText"
+        stringResource(R.string.date_label_same_day, dayText, weekText)
     } else {
-        val md = "%d月%d日".format(r.wakeTime.monthValue, r.wakeTime.dayOfMonth)
-        "$dayText $md · $weekText"
+        val md = stringResource(R.string.date_md, r.wakeTime.monthValue, r.wakeTime.dayOfMonth)
+        stringResource(R.string.date_label_other_day, dayText, md, weekText)
     }
 }
 
@@ -1070,19 +1094,19 @@ private fun AlarmModeSelector(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "提醒方式",
+            text = stringResource(R.string.reminder_mode_title),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         FilterChip(
             selected = !inAppMode,
             onClick = { onSelect(false) },
-            label = { Text("系统时钟", fontSize = 13.sp) },
+            label = { Text(stringResource(R.string.mode_system_clock), fontSize = 13.sp) },
         )
         FilterChip(
             selected = inAppMode,
             onClick = { onSelect(true) },
-            label = { Text("本机闹钟", fontSize = 13.sp) },
+            label = { Text(stringResource(R.string.mode_in_app), fontSize = 13.sp) },
         )
     }
 }
@@ -1105,13 +1129,13 @@ private fun FullScreenHintRow(onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "⚠️ 全屏提醒未开启：锁屏时闹钟可能只弹通知、不占满屏",
+            text = stringResource(R.string.fsi_hint),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.tertiary,
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = "去开启",
+            text = stringResource(R.string.fsi_hint_action),
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.primary,
@@ -1145,19 +1169,19 @@ private fun PendingAlarmRow(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "⏰ 本机闹钟 $timeText",
+                    text = stringResource(R.string.pending_title, timeText),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 Text(
-                    text = "$dayLabel · 状态栏闹钟图标会挂到它响",
+                    text = stringResource(R.string.pending_subtitle, dayLabel),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
             TextButton(onClick = onCancel) {
-                Text("取消", fontSize = 14.sp)
+                Text(stringResource(R.string.pending_cancel), fontSize = 14.sp)
             }
         }
     }
@@ -1168,14 +1192,19 @@ private fun PendingAlarmRow(
  *
  * 跨天必须显式说出来：睡前设的闹钟，第二天回到首页时只写「今天」会看错日子。
  */
+@Composable
 private fun formatPendingAlarm(triggerAtMillis: Long, is24Hour: Boolean): Pair<String, String> {
     val zone = ZoneId.systemDefault()
     val at = Instant.ofEpochMilli(triggerAtMillis).atZone(zone)
     val today = LocalDate.now(zone)
     val dayLabel = when (at.toLocalDate()) {
-        today -> "今天"
-        today.plusDays(1) -> "明天"
-        else -> at.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
+        today -> stringResource(R.string.day_today)
+        today.plusDays(1) -> stringResource(R.string.day_tomorrow)
+        else -> stringResource(
+            R.string.date_md,
+            at.monthValue,
+            at.dayOfMonth,
+        )
     }
     return formatTime(at.hour, at.minute, is24Hour) to dayLabel
 }
@@ -1198,7 +1227,7 @@ private fun AlarmSettingsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("闹钟设置") },
+        title = { Text(stringResource(R.string.alarm_settings_title)) },
         text = {
             Column(
                 modifier = Modifier
@@ -1206,46 +1235,46 @@ private fun AlarmSettingsDialog(
                     .heightIn(max = 460.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                SettingsSectionLabel("铃声")
+                SettingsSectionLabel(stringResource(R.string.setting_ringtone))
                 TextButton(onClick = onPickRingtone, contentPadding = PaddingValues(0.dp)) {
-                    Text("$ringtoneLabel（点击更换）", fontSize = 14.sp)
+                    Text(stringResource(R.string.ringtone_change_hint, ringtoneLabel), fontSize = 14.sp)
                 }
 
-                SettingsSectionLabel("音频路由")
+                SettingsSectionLabel(stringResource(R.string.setting_route))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingChip(
-                        text = "耳机优先",
+                        text = stringResource(R.string.route_headset_first),
                         selected = settings.routeMode == AudioRouteMode.PREFER_HEADSET,
                         onClick = { onRouteChange(AudioRouteMode.PREFER_HEADSET) },
                     )
                     SettingChip(
-                        text = "只走耳机",
+                        text = stringResource(R.string.route_headset_only),
                         selected = settings.routeMode == AudioRouteMode.HEADSET_ONLY,
                         onClick = { onRouteChange(AudioRouteMode.HEADSET_ONLY) },
                     )
                     SettingChip(
-                        text = "外放",
+                        text = stringResource(R.string.route_speaker),
                         selected = settings.routeMode == AudioRouteMode.SPEAKER,
                         onClick = { onRouteChange(AudioRouteMode.SPEAKER) },
                     )
                 }
 
-                SettingsSectionLabel("最长响铃（兜底自动停）")
+                SettingsSectionLabel(stringResource(R.string.setting_max_ring))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppSettings.MAX_RING_MINUTES_OPTIONS.forEach { minutes ->
                         SettingChip(
-                            text = "$minutes 分",
+                            text = stringResource(R.string.minutes_short, minutes),
                             selected = settings.maxRingMillis == minutes * 60_000L,
                             onClick = { onMaxRingChange(minutes * 60_000L) },
                         )
                     }
                 }
 
-                SettingsSectionLabel("贪睡时长")
+                SettingsSectionLabel(stringResource(R.string.setting_snooze))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppSettings.SNOOZE_MINUTES_OPTIONS.forEach { minutes ->
                         SettingChip(
-                            text = "$minutes 分",
+                            text = stringResource(R.string.minutes_short, minutes),
                             selected = settings.snoozeMinutes == minutes,
                             onClick = { onSnoozeChange(minutes) },
                         )
@@ -1254,7 +1283,7 @@ private fun AlarmSettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("完成") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.setting_done)) }
         },
     )
 }

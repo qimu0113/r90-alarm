@@ -31,18 +31,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yanfei.r90alarm.R90Theme
+import com.yanfei.r90alarm.R
 import com.yanfei.r90alarm.settings.AppSettings
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-
-/** 标签缺失时的回落值。 */
-private const val DEFAULT_RING_LABEL = "R90 闹钟"
 
 /**
  * 响铃页。
@@ -95,8 +94,11 @@ class RingActivity : ComponentActivity() {
     /**
      * 响铃标签。做成可变状态而不是 onCreate 里的局部 val ——
      * 本页是 `singleTop`，可能被「复用」而不是重建（见 [onNewIntent]）。
+     *
+     * 初值给空串：onCreate 会立刻用真实标签（或本地化的回落值）覆盖它，
+     * 空串只是构造期到 onCreate 之间的占位。
      */
-    private val label = mutableStateOf(DEFAULT_RING_LABEL)
+    private val label = mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -179,10 +181,10 @@ class RingActivity : ComponentActivity() {
         if (!AlarmPlaybackService.isRinging) finish()
     }
 
-    /** 从 intent 里取标签，空值回落默认。 */
+    /** 从 intent 里取标签；空值回落本地化的默认名。 */
     private fun readLabel(from: Intent?): String =
         from?.getStringExtra(AlarmPlaybackService.EXTRA_LABEL).orEmpty()
-            .ifBlank { DEFAULT_RING_LABEL }
+            .ifBlank { getString(R.string.alarm_default_label) }
 
     /**
      * 让响铃页在锁屏上直接可见、并点亮屏幕。
@@ -257,7 +259,7 @@ private fun RingScreen(
                 .fillMaxWidth()
                 .height(72.dp),
         ) {
-            Text("关闭", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.ring_dismiss), fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -268,7 +270,10 @@ private fun RingScreen(
                 .fillMaxWidth()
                 .height(56.dp),
         ) {
-            Text("贪睡 $snoozeMinutes 分钟", fontSize = 17.sp)
+            Text(
+                stringResource(R.string.ring_snooze, snoozeMinutes),
+                fontSize = 17.sp,
+            )
         }
     }
 }

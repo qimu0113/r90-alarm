@@ -53,7 +53,7 @@ class AlarmPlaybackService : Service() {
     private var router: AlarmAudioRouter? = null
     private var vibrator: Vibrator? = null
     private var settings: AppSettings = AppSettings()
-    private var label: String = DEFAULT_LABEL
+    private var label: String = ""
     private var routeSummary: String = "初始化中"
 
     /**
@@ -140,7 +140,7 @@ class AlarmPlaybackService : Service() {
             return
         }
 
-        label = rawLabel.ifBlank { DEFAULT_LABEL }
+        label = rawLabel.ifBlank { getString(R.string.alarm_default_label) }
 
         // 置「响铃中」：必须在 startPlayer()（其内部会 router.start() → 首次 report）之前，
         // 否则首条路由摘要会被 onRouteSummary 的 ringing 守卫挡掉，通知文案停在「初始化中」。
@@ -274,10 +274,10 @@ class AlarmPlaybackService : Service() {
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "闹钟响铃",
+            getString(R.string.notif_channel_name),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "到点响铃时的常驻通知，含「关闭」与「贪睡」按钮"
+            description = getString(R.string.notif_channel_desc)
             // 铃声我们自己用 MediaPlayer 播（为了控制音频路由），渠道本身不出声
             setSound(null, null)
             enableVibration(true)
@@ -339,8 +339,8 @@ class AlarmPlaybackService : Service() {
             // 锁屏 / 息屏 / AOD 才启动全屏。亮屏已解锁时靠通知本身兜底（用户点通知即进本页）。
             // 第二个参数 true = 即使通知未被展开也要触发（闹钟场景必须如此）。
             .setFullScreenIntent(contentIntent, true)
-            .addAction(0, "贪睡 ${settings.snoozeMinutes} 分钟", snoozeIntent)
-            .addAction(0, "关闭", dismissIntent)
+            .addAction(0, getString(R.string.notif_action_snooze, settings.snoozeMinutes), snoozeIntent)
+            .addAction(0, getString(R.string.notif_action_dismiss), dismissIntent)
             .build()
     }
 
@@ -383,8 +383,7 @@ class AlarmPlaybackService : Service() {
         var isRinging: Boolean = false
             private set
 
-        private const val DEFAULT_LABEL = "R90 闹钟"
-        private const val MIN_AUTO_STOP_MILLIS = 5_000L
+                private const val MIN_AUTO_STOP_MILLIS = 5_000L
 
         private const val RC_CONTENT = 3101
         private const val RC_DISMISS = 3102
@@ -411,7 +410,7 @@ class AlarmPlaybackService : Service() {
         fun snooze(context: Context, label: String, source: String) {
             val minutes = AppSettings.load(context).snoozeMinutes
             val triggerAt = System.currentTimeMillis() + minutes * 60_000L
-            val newLabel = label.ifBlank { "$DEFAULT_LABEL·贪睡" }
+            val newLabel = label.ifBlank { context.getString(R.string.alarm_default_label) + "·贪睡" }
             val result = AlarmScheduler.schedule(context, triggerAt, newLabel)
             DiagLog.append(context, "ALARM_SNOOZE", "来源=$source ${minutes}分钟 at=$triggerAt")
             if (result != AlarmScheduler.Result.Scheduled) {

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">R90 Alarm</string>
+
+    <!-- ===== Batch 2: usage history / about / update check ===== -->
+
+    <!-- Top-bar overflow menu -->
+    <string name="menu_more">More</string>
+    <string name="menu_history">Usage history</string>
+    <string name="menu_about">About</string>
+
+    <!-- Usage history screen -->
+    <string name="history_title">Usage history</string>
+    <string name="history_empty">(No records yet. Set an alarm from the home screen and one will appear.)</string>
+    <string name="history_hint">Records stay on this device; exporting is your call. (The app\'s only network use is the update check, which has nothing to do with your history.)</string>
+    <string name="history_export_share">Share file</string>
+    <string name="history_export_save">Save as…</string>
+    <string name="history_clear">Clear</string>
+    <string name="history_back">Back</string>
+    <string name="history_cleared">Cleared</string>
+    <string name="history_export_subject">R90 Alarm · Usage history</string>
+    <string name="history_export_chooser">Export usage history</string>
+    <string name="history_export_failed_to_clipboard">Could not open the share sheet — copied to the clipboard instead</string>
+    <string name="history_saved">Saved</string>
+    <string name="history_save_failed">Save failed</string>
+
+    <!-- About screen -->
+    <string name="about_title">About</string>
+    <string name="about_version_label">Version %1$s (build %2$d)</string>
+    <string name="about_intro">An R90 sleep-cycle alarm for the moment you are already in bed. All the core math runs on this device — no account, no data collection.</string>
+    <string name="about_open_releases">Open releases</string>
+    <string name="about_check_update">Check for updates</string>
+    <string name="about_checking">Checking…</string>
+    <string name="about_update_available">New version available: %1$s</string>
+    <string name="about_up_to_date">Already up to date</string>
+    <string name="about_check_failed">Check failed: %1$s</string>
+    <string name="about_open_releases_failed">Could not open the browser — the link has been copied to the clipboard</string>
+
+    <!-- ===== Batch 3 onward: in-app alarm / home screen / ring screen ===== -->
+
+    <!-- Content descriptions for the top-bar icons (screen readers) -->
+    <string name="cd_alarm_settings">Alarm settings</string>
+    <string name="cd_diag_log">Diagnostic log</string>
+
+    <!-- Time-to-fall-asleep selector -->
+    <string name="fall_asleep_title">Time to fall asleep</string>
+    <string name="fall_asleep_now">Now</string>
+    <string name="minutes_short">%d min</string>
+
+    <!-- Reminder method -->
+    <string name="reminder_mode_title">Reminder method</string>
+    <string name="mode_system_clock">System clock</string>
+    <string name="mode_in_app">In-app alarm</string>
+
+    <!-- R90 result rows -->
+    <string name="row_set">Set</string>
+    <string name="day_today">Today</string>
+    <string name="day_tomorrow">Tomorrow</string>
+    <string name="day_after_tomorrow">Day after tomorrow</string>
+    <string name="day_nth">Day %d</string>
+    <string name="weekday_1">Mon</string>
+    <string name="weekday_2">Tue</string>
+    <string name="weekday_3">Wed</string>
+    <string name="weekday_4">Thu</string>
+    <string name="weekday_5">Fri</string>
+    <string name="weekday_6">Sat</string>
+    <string name="weekday_7">Sun</string>
+    <string name="date_md">%1$d/%2$d</string>
+    <string name="date_label_same_day">%1$s · %2$s</string>
+    <string name="date_label_other_day">%1$s %2$s · %3$s</string>
+
+    <!-- Full-screen-intent hint row -->
+    <string name="fsi_hint">⚠️ Full-screen reminders are off: on the lock screen the alarm may only show a notification instead of taking over the screen</string>
+    <string name="fsi_hint_action">Enable</string>
+
+    <!-- Pending-alarm banner -->
+    <string name="pending_title">⏰ In-app alarm %1$s</string>
+    <string name="pending_subtitle">%1$s · the status-bar alarm icon stays until it rings</string>
+    <string name="pending_cancel">Cancel</string>
+
+    <!-- Snackbars -->
+    <string name="snack_set_in_app">In-app alarm set for %1$s</string>
+    <string name="snack_need_exact_alarm">The "Alarms &amp; reminders" permission is required — system settings have been opened</string>
+    <string name="snack_in_app_failed">Could not set the in-app alarm: %1$s</string>
+    <string name="snack_cancelled">In-app alarm for %1$s cancelled</string>
+    <string name="snack_cannot_open_app_settings">Could not open the app info page</string>
+    <string name="snack_copied">Copied %1$s — set it manually in the system clock</string>
+
+    <!-- Diagnostic log dialog -->
+    <string name="diag_title">Diagnostic log</string>
+    <string name="diag_desc">Records the outcome of every alarm attempt plus device environment, for offline troubleshooting. The log itself never leaves this device; the app\'s only network use is the update check, which is unrelated to it.</string>
+    <string name="diag_empty">(Nothing yet. Tap "Set" once and a record will appear.)</string>
+    <string name="diag_export">Export</string>
+    <string name="diag_clear">Clear</string>
+    <string name="diag_close">Close</string>
+    <string name="clip_diag_label">R90 diagnostic log</string>
+    <string name="clip_wake_label">R90 wake time</string>
+
+    <!-- Recovery dialog shown when no system clock app can be found -->
+    <string name="nospace_title">No clock app found</string>
+    <string name="nospace_body_intro">No app on this phone responds to "set alarm". The clock may not be installed, or it may have been disabled by the system.</string>
+    <string name="nospace_body_time">The time to set is %1$s. You could try:</string>
+    <string name="diag_hint_cleared">Cleared</string>
+    <string name="nospace_step1">1. Open the system clock\'s alarm list and add it by hand</string>
+    <string name="nospace_step2">2. Check in app info whether the clock has been disabled</string>
+    <string name="nospace_step3">3. Copy the time and set it later yourself</string>
+    <string name="nospace_open_clock">Open clock</string>
+    <string name="nospace_app_settings">App info</string>
+    <string name="nospace_copy_time">Copy time</string>
+
+    <!-- Alarm settings dialog -->
+    <string name="alarm_settings_title">Alarm settings</string>
+    <string name="setting_ringtone">Ringtone</string>
+    <string name="ringtone_change_hint">%1$s (tap to change)</string>
+    <string name="setting_route">Audio routing</string>
+    <string name="route_headset_first">Headset first</string>
+    <string name="route_headset_only">Headset only</string>
+    <string name="route_speaker">Speaker</string>
+    <string name="setting_max_ring">Max ringing (safety auto-stop)</string>
+    <string name="setting_snooze">Snooze length</string>
+    <string name="setting_done">Done</string>
+
+    <!-- Ring screen -->
+    <string name="ring_dismiss">Dismiss</string>
+    <string name="ring_snooze">Snooze %d min</string>
+
+    <!-- Usage history rows -->
+    <string name="record_cycles">%d cycles</string>
+    <string name="record_line">%1$s · %2$d min to fall asleep</string>
+    <string name="mode_unknown">Unknown</string>
+    <string name="record_fall_asleep">%d min to fall asleep</string>
+    <string name="record_success">Succeeded</string>
+    <string name="record_failed">Failed</string>
+    <string name="clip_history_label">R90 usage history</string>
+
+    <!-- Ringing notification -->
+    <string name="notif_channel_name">Alarm ringing</string>
+    <string name="notif_channel_desc">Persistent notification shown while the alarm rings, with Dismiss and Snooze actions</string>
+    <string name="notif_action_snooze">Snooze %d min</string>
+    <string name="notif_action_dismiss">Dismiss</string>
+    <string name="alarm_default_label">R90 Alarm</string>
+    <string name="alarm_label_cycles">R90 · %d cycles</string>
+
+    <!-- Snackbars and sharing for the system-clock path -->
+    <string name="snack_no_activity_context">Could not get an activity context — please reopen the app and try again</string>
+    <string name="snack_system_clock_requested">Asked the system clock to set %1$s</string>
+    <string name="snack_system_clock_opened">System clock opened — please confirm %1$s</string>
+    <string name="snack_alarm_list_opened">System clock opened</string>
+    <string name="snack_alarm_list_failed">Could not open the system clock alarm list either</string>
+    <string name="diag_share_subject">R90 Alarm · Diagnostic log</string>
+    <string name="diag_share_chooser">Export log</string>
+    <string name="share_panel_failed_to_clipboard">Could not open the share sheet — copied to the clipboard</string>
+    <string name="about_clip_release_label">R90 releases page</string>
+
+    <!-- System ringtone picker -->
+    <string name="picker_title">Choose alarm ringtone</string>
+    <string name="picker_default">System default</string>
+    <string name="picker_selected">Selected</string>
+</resources>

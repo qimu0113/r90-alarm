@@ -168,7 +168,7 @@ private fun openUrl(context: Context, url: String, onFailure: (String) -> Unit) 
         )
     }.isSuccess
     if (!ok) {
-        copyToClipboard(context, "R90 发布页", url)
+        copyToClipboard(context, context.getString(R.string.about_clip_release_label), url)
         onFailure(context.getString(R.string.about_open_releases_failed))
     }
 }

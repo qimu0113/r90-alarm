@@ -156,7 +156,7 @@ fun HistoryScreen(onBack: () -> Unit) {
                         scope.launch {
                             val shared = exportAndShare(context)
                             if (!shared) {
-                                copyToClipboard(context, "R90 使用历史", buildMarkdown())
+                                copyToClipboard(context, context.getString(R.string.clip_history_label), buildMarkdown())
                                 snackbar.showSnackbar(
                                     context.getString(R.string.history_export_failed_to_clipboard)
                                 )
@@ -281,7 +281,7 @@ private fun HistoryRow(record: UsageRecord) {
             Column(modifier = Modifier.width(88.dp)) {
                 Text(whenText, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    text = "${record.cycles} 周期",
+                    text = stringResource(R.string.record_cycles, record.cycles),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -295,13 +295,27 @@ private fun HistoryRow(record: UsageRecord) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "${record.mode.display} · 入睡 ${record.fallAsleepMin} 分",
+                    // 提醒方式在这里另做一次本地化映射：[UsageRecord.Mode.display] 是
+                    // 逻辑层的固定中文（Markdown 导出要用，保持跨设备一致），UI 得跟着
+                    // 系统语言走 —— 两者各管一层，改一边记得同步语义。
+                    text = stringResource(
+                        R.string.record_line,
+                        when (record.mode) {
+                            UsageRecord.Mode.SYSTEM_CLOCK -> stringResource(R.string.mode_system_clock)
+                            UsageRecord.Mode.IN_APP -> stringResource(R.string.mode_in_app)
+                        },
+                        record.fallAsleepMin,
+                    ),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Text(
-                text = record.resultText,
+                text = if (record.success) {
+                    stringResource(R.string.record_success)
+                } else {
+                    stringResource(R.string.record_failed)
+                },
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (record.success) {
