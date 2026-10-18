@@ -40,7 +40,7 @@
 ### 直接用（推荐给只想用的）
 
 1. 打开本仓库的 [Releases](https://github.com/qimu0113/r90-alarm/releases) 页面
-2. 下载 `r90-alarm-v0.1.apk`
+2. 下载 `r90-alarm-v0.3.apk`
 3. 手机上点开安装（首次需要允许「安装未知来源应用」）
 
 APK 的基本信息：
@@ -48,10 +48,10 @@ APK 的基本信息：
 | 项 | 值 |
 |---|---|
 | 包名 | `com.yanfei.r90alarm` |
-| 版本 | 0.2 |
+| 版本 | 0.3 |
 | minSdk / targetSdk | 26 / 35（Android 8.0 及以上） |
-| 体积 | 1,244,608 字节（约 1.2 MB） |
-| APK SHA-256 | `10e9d7d5a8233f81cfedaa8644398e9a3bcd52e7e041b4b4ea38b89bf09317fe`（另见对应 [Release](https://github.com/qimu0113/r90-alarm/releases) 说明） |
+| 体积 | 1,304,472 字节（约 1.24 MB） |
+| APK SHA-256 | `f1f4c99645377952e912eb9c0898c2fb37d990b7d1228350c785fb59adc574cf`（另见对应 [Release](https://github.com/qimu0113/r90-alarm/releases) 说明） |
 | 权限 | 普通权限（安装即授予、不弹窗）：`SET_ALARM`、`USE_EXACT_ALARM`、`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`、`USE_FULL_SCREEN_INTENT`、`VIBRATE`、`RECEIVE_BOOT_COMPLETED`、`INTERNET`。运行时权限（弹一次）：`POST_NOTIFICATIONS`。另有一项 androidx 自动加入的 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`（应用自定义、无实际能力） |
 | 签名 | APK Signature Scheme **v2**（minSdk 26 已高于 v1 所需的 API 24，无需 v1） |
 | 来源 | 本仓库 `main` 分支源码构建，可用 `apksigner verify` 自行比对指纹 |

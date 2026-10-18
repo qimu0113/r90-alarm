@@ -42,16 +42,16 @@ Size: 24 Kotlin source files, 4689 lines, plus 6 test files, 1045 lines (84 unit
 ### Use the prebuilt APK
 
 1. Open the [Releases](https://github.com/qimu0113/r90-alarm/releases) page
-2. Download `r90-alarm-v0.1.apk`
+2. Download `r90-alarm-v0.3.apk`
 3. Open it on your phone and install (you'll need to allow "install unknown apps" once)
 
 | Item | Value |
 |---|---|
 | Package name | `com.yanfei.r90alarm` |
-| Version | 0.2 |
+| Version | 0.3 |
 | minSdk / targetSdk | 26 / 35 (Android 8.0 and up) |
-| Size | 1,244,608 bytes (~1.2 MB) |
-| APK SHA-256 | `10e9d7d5a8233f81cfedaa8644398e9a3bcd52e7e041b4b4ea38b89bf09317fe` (also recorded in the corresponding [Release](https://github.com/qimu0113/r90-alarm/releases) notes) |
+| Size | 1,304,472 bytes (~1.24 MB) |
+| APK SHA-256 | `f1f4c99645377952e912eb9c0898c2fb37d990b7d1228350c785fb59adc574cf` (also recorded in the corresponding [Release](https://github.com/qimu0113/r90-alarm/releases) notes) |
 | Permissions | Normal level (granted at install, **no dialog**): `SET_ALARM`, `USE_EXACT_ALARM`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `USE_FULL_SCREEN_INTENT`, `VIBRATE`, `RECEIVE_BOOT_COMPLETED`, `INTERNET`. Runtime (one dialog): `POST_NOTIFICATIONS`. One further permission, `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, is added automatically by androidx — it is app-defined and grants no actual capability |
 | Signing | APK Signature Scheme **v2** (minSdk 26 is already above the API 24 that makes v1 necessary) |
 
